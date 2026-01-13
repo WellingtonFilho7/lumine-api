@@ -1,6 +1,8 @@
 {
   "name": "lumine-api",
-  "version": "0.1.0",
-  "private": true,
-  "type": "module"
+  "version": "1.0.0",
+  "description": "API de sincronização do Instituto Lumine com Google Sheets",
+  "dependencies": {
+    "googleapis": "^128.0.0"
+  }
 }
