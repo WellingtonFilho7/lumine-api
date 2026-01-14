@@ -3,6 +3,60 @@ const { google } = require('googleapis');
 const SPREADSHEET_ID = process.env.SPREADSHEET_ID;
 const GOOGLE_CREDENTIALS = JSON.parse(process.env.GOOGLE_CREDENTIALS || '{}');
 
+const CHILD_HEADERS = [
+  'id',
+  'childId',
+  'name',
+  'birthDate',
+  'guardianName',
+  'guardianPhone',
+  'guardianPhoneAlt',
+  'guardianRelation',
+  'address',
+  'school',
+  'schoolShift',
+  'grade',
+  'neighborhood',
+  'referralSource',
+  'emergencyContact',
+  'emergencyPhone',
+  'authorizedPickup',
+  'healthNotes',
+  'specialNeeds',
+  'priority',
+  'priorityReason',
+  'enrollmentStatus',
+  'enrollmentDate',
+  'triageDate',
+  'triageNotes',
+  'startDate',
+  'classGroup',
+  'responsibilityTerm',
+  'consentTerm',
+  'imageConsent',
+  'documentsReceived',
+  'initialObservations',
+  'matriculationDate',
+  'enrollmentHistory',
+  'entryDate',
+  'createdAt',
+];
+
+const RECORD_HEADERS = [
+  'id',
+  'childId',
+  'date',
+  'attendance',
+  'participation',
+  'mood',
+  'interaction',
+  'activity',
+  'performance',
+  'notes',
+  'familyContact',
+  'contactReason',
+];
+
 async function getAuthClient() {
   const auth = new google.auth.GoogleAuth({
     credentials: GOOGLE_CREDENTIALS,
@@ -24,7 +78,7 @@ function rowsToObjects(rows) {
     .map(row => {
       const obj = {};
       headers.forEach((header, index) => {
-        obj[header] = row[index] || '';
+        obj[header] = row[index] ?? '';
       });
       return obj;
     })
@@ -32,7 +86,73 @@ function rowsToObjects(rows) {
 }
 
 function objectsToRows(objects, headers) {
-  return objects.map(obj => headers.map(h => obj[h] || ''));
+  return objects.map(obj => headers.map(h => (obj[h] ?? '')));
+}
+
+function parseEnrollmentHistory(value) {
+  if (!value) return [];
+  if (Array.isArray(value)) return value;
+  try {
+    const parsed = JSON.parse(value);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch (error) {
+    return [];
+  }
+}
+
+function parseDocumentsReceived(value) {
+  if (!value) return [];
+  if (Array.isArray(value)) return value;
+  return String(value)
+    .split('|')
+    .map(item => item.trim())
+    .filter(Boolean);
+}
+
+function normalizeChildForSheet(child) {
+  const normalized = { ...child };
+
+  if (Array.isArray(normalized.documentsReceived)) {
+    normalized.documentsReceived = normalized.documentsReceived.filter(Boolean).join('|');
+  }
+
+  if (Array.isArray(normalized.enrollmentHistory)) {
+    normalized.enrollmentHistory = JSON.stringify(normalized.enrollmentHistory);
+  }
+
+  return normalized;
+}
+
+function normalizeChildrenForApp(children) {
+  return children.map(child => ({
+    ...child,
+    documentsReceived: parseDocumentsReceived(child.documentsReceived),
+    enrollmentHistory: parseEnrollmentHistory(child.enrollmentHistory),
+  }));
+}
+
+async function getNextChildId(sheets) {
+  const configRes = await sheets.spreadsheets.values.get({
+    spreadsheetId: SPREADSHEET_ID,
+    range: 'Config!A2:B2',
+  });
+
+  const currentValue = parseInt(configRes.data?.values?.[0]?.[1], 10);
+  const nextValue = Number.isFinite(currentValue) && currentValue > 0 ? currentValue : 1;
+
+  const childId = `CRI-${String(nextValue).padStart(4, '0')}`;
+  const updatedValue = nextValue + 1;
+
+  await sheets.spreadsheets.values.update({
+    spreadsheetId: SPREADSHEET_ID,
+    range: 'Config!A2:B2',
+    valueInputOption: 'RAW',
+    requestBody: {
+      values: [['NEXT_CHILD_ID', String(updatedValue)]],
+    },
+  });
+
+  return childId;
 }
 
 module.exports = async (req, res) => {
@@ -51,7 +171,7 @@ module.exports = async (req, res) => {
       const [childrenRes, recordsRes] = await Promise.all([
         sheets.spreadsheets.values.get({
           spreadsheetId: SPREADSHEET_ID,
-          range: 'Criancas!A:L',
+          range: 'Criancas!A:AJ',
         }),
         sheets.spreadsheets.values.get({
           spreadsheetId: SPREADSHEET_ID,
@@ -59,10 +179,14 @@ module.exports = async (req, res) => {
         }),
       ]);
 
+      const children = normalizeChildrenForApp(
+        rowsToObjects(childrenRes.data.values || [])
+      );
+
       return res.status(200).json({
         success: true,
         data: {
-          children: rowsToObjects(childrenRes.data.values || []),
+          children,
           records: rowsToObjects(recordsRes.data.values || []),
         },
         lastSync: new Date().toISOString(),
@@ -78,28 +202,16 @@ module.exports = async (req, res) => {
         if (children && children.length > 0) {
           await sheets.spreadsheets.values.clear({
             spreadsheetId: SPREADSHEET_ID,
-            range: 'Criancas!A2:L999',
+            range: 'Criancas!A2:AJ999',
           });
 
-          const childrenRows = objectsToRows(children, [
-            'id',
-            'name',
-            'birthDate',
-            'entryDate',
-            'guardianName',
-            'guardianPhone',
-            'guardianPhoneAlt',
-            'address',
-            'school',
-            'grade',
-            'initialObservations',
-            'status',
-          ]);
+          const normalizedChildren = children.map(normalizeChildForSheet);
+          const childrenRows = objectsToRows(normalizedChildren, CHILD_HEADERS);
 
           if (childrenRows.length > 0) {
             await sheets.spreadsheets.values.update({
               spreadsheetId: SPREADSHEET_ID,
-              range: 'Criancas!A2:L',
+              range: 'Criancas!A2:AJ',
               valueInputOption: 'RAW',
               resource: { values: childrenRows },
             });
@@ -112,20 +224,7 @@ module.exports = async (req, res) => {
             range: 'Registros!A2:L999',
           });
 
-          const recordsRows = objectsToRows(records, [
-            'id',
-            'childId',
-            'date',
-            'attendance',
-            'participation',
-            'mood',
-            'interaction',
-            'activity',
-            'performance',
-            'notes',
-            'familyContact',
-            'contactReason',
-          ]);
+          const recordsRows = objectsToRows(records, RECORD_HEADERS);
 
           if (recordsRows.length > 0) {
             await sheets.spreadsheets.values.update({
@@ -145,54 +244,33 @@ module.exports = async (req, res) => {
       }
 
       if (action === 'addChild') {
-        const child = data;
-        const row = [
-          [
-            child.id,
-            child.name,
-            child.birthDate,
-            child.entryDate,
-            child.guardianName,
-            child.guardianPhone,
-            child.guardianPhoneAlt || '',
-            child.address || '',
-            child.school || '',
-            child.grade || '',
-            child.initialObservations || '',
-            child.status || 'active',
-          ],
-        ];
+        let child = data || {};
+
+        if (!child.childId) {
+          const generatedChildId = await getNextChildId(sheets);
+          child = { ...child, childId: generatedChildId };
+        }
+
+        const normalizedChild = normalizeChildForSheet(child);
+        const row = [CHILD_HEADERS.map(header => normalizedChild[header] ?? '')];
 
         await sheets.spreadsheets.values.append({
           spreadsheetId: SPREADSHEET_ID,
-          range: 'Criancas!A:L',
+          range: 'Criancas!A:AJ',
           valueInputOption: 'RAW',
           resource: { values: row },
         });
 
-        return res
-          .status(200)
-          .json({ success: true, message: 'Criança adicionada' });
+        return res.status(200).json({
+          success: true,
+          message: 'Criança adicionada',
+          childId: normalizedChild.childId,
+        });
       }
 
       if (action === 'addRecord') {
-        const record = data;
-        const row = [
-          [
-            record.id,
-            record.childId,
-            record.date,
-            record.attendance,
-            record.participation || '',
-            record.mood || '',
-            record.interaction || '',
-            record.activity || '',
-            record.performance || '',
-            record.notes || '',
-            record.familyContact || 'no',
-            record.contactReason || '',
-          ],
-        ];
+        const record = data || {};
+        const row = [RECORD_HEADERS.map(header => record[header] ?? '')];
 
         await sheets.spreadsheets.values.append({
           spreadsheetId: SPREADSHEET_ID,
@@ -201,9 +279,10 @@ module.exports = async (req, res) => {
           resource: { values: row },
         });
 
-        return res
-          .status(200)
-          .json({ success: true, message: 'Registro adicionado' });
+        return res.status(200).json({
+          success: true,
+          message: 'Registro adicionado',
+        });
       }
     }
 
