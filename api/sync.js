@@ -11,42 +11,38 @@ const CHILD_HEADERS = [
   'guardianName',
   'guardianPhone',
   'guardianPhoneAlt',
-  'guardianRelation',
-  'address',
   'school',
   'schoolShift',
   'grade',
   'neighborhood',
   'referralSource',
-  'emergencyContact',
-  'emergencyPhone',
-  'authorizedPickup',
+  'schoolCommuteAlone',
+  'healthCareNeeded',
   'healthNotes',
+  'dietaryRestriction',
   'specialNeeds',
+  'triageNotes',
   'priority',
   'priorityReason',
   'enrollmentStatus',
   'enrollmentDate',
   'triageDate',
-  'triageNotes',
   'startDate',
-  'classGroup',
+  'participationDays',
+  'authorizedPickup',
+  'canLeaveAlone',
+  'leaveAloneConsent',
+  'leaveAloneConfirmation',
   'responsibilityTerm',
   'consentTerm',
   'imageConsent',
   'documentsReceived',
   'initialObservations',
+  'classGroup',
   'matriculationDate',
   'enrollmentHistory',
   'entryDate',
   'createdAt',
-  'schoolCommuteAlone',
-  'healthCareNeeded',
-  'dietaryRestriction',
-  'participationDays',
-  'canLeaveAlone',
-  'leaveAloneConsent',
-  'leaveAloneConfirmation',
 ];
 
 const RECORD_HEADERS = [
@@ -192,7 +188,7 @@ module.exports = async (req, res) => {
       const [childrenRes, recordsRes] = await Promise.all([
         sheets.spreadsheets.values.get({
           spreadsheetId: SPREADSHEET_ID,
-          range: 'Criancas!A:AQ',
+          range: 'Criancas!A:AM',
         }),
         sheets.spreadsheets.values.get({
           spreadsheetId: SPREADSHEET_ID,
@@ -223,7 +219,7 @@ module.exports = async (req, res) => {
         if (children && children.length > 0) {
           await sheets.spreadsheets.values.clear({
             spreadsheetId: SPREADSHEET_ID,
-            range: 'Criancas!A2:AQ999',
+            range: 'Criancas!A2:AM999',
           });
 
           const normalizedChildren = children.map(normalizeChildForSheet);
@@ -232,7 +228,7 @@ module.exports = async (req, res) => {
           if (childrenRows.length > 0) {
             await sheets.spreadsheets.values.update({
               spreadsheetId: SPREADSHEET_ID,
-              range: 'Criancas!A2:AQ',
+              range: 'Criancas!A2:AM',
               valueInputOption: 'RAW',
               resource: { values: childrenRows },
             });
@@ -277,7 +273,7 @@ module.exports = async (req, res) => {
 
         await sheets.spreadsheets.values.append({
           spreadsheetId: SPREADSHEET_ID,
-          range: 'Criancas!A:AQ',
+          range: 'Criancas!A:AM',
           valueInputOption: 'RAW',
           resource: { values: row },
         });
