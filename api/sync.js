@@ -60,6 +60,21 @@ const RECORD_HEADERS = [
   'contactReason',
 ];
 
+const CHILD_DATE_FIELDS = ['birthDate', 'startDate', 'entryDate'];
+const CHILD_DATETIME_FIELDS = [
+  'enrollmentDate',
+  'triageDate',
+  'matriculationDate',
+  'createdAt',
+];
+const RECORD_DATE_FIELDS = ['date'];
+
+const MS_PER_DAY = 24 * 60 * 60 * 1000;
+const SHEETS_EPOCH = Date.UTC(1899, 11, 30);
+const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+const ISO_DATETIME_RE = /^\d{4}-\d{2}-\d{2}T/;
+const SERIAL_RE = /^-?\d+(\.\d+)?$/;
+
 async function getAuthClient() {
   const auth = new google.auth.GoogleAuth({
     credentials: GOOGLE_CREDENTIALS,
@@ -90,6 +105,74 @@ function rowsToObjects(rows) {
 
 function objectsToRows(objects, headers) {
   return objects.map(obj => headers.map(h => (obj[h] ?? '')));
+}
+
+function parseSerial(value) {
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (trimmed && SERIAL_RE.test(trimmed)) {
+      const num = Number(trimmed);
+      if (Number.isFinite(num)) return num;
+    }
+  }
+  return null;
+}
+
+function toSerial(value, dateOnly) {
+  if (value === null || value === undefined || value === '') return '';
+  const existing = parseSerial(value);
+  if (existing !== null) return existing;
+
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (!trimmed) return '';
+
+    if (dateOnly && ISO_DATETIME_RE.test(trimmed)) {
+      return toSerial(trimmed.split('T')[0], true);
+    }
+
+    if (ISO_DATE_RE.test(trimmed)) {
+      const parsed = Date.parse(`${trimmed}T00:00:00Z`);
+      if (!Number.isNaN(parsed)) {
+        return (parsed - SHEETS_EPOCH) / MS_PER_DAY;
+      }
+    }
+
+    const parsed = Date.parse(trimmed);
+    if (!Number.isNaN(parsed)) {
+      return (parsed - SHEETS_EPOCH) / MS_PER_DAY;
+    }
+  }
+
+  if (value instanceof Date && !Number.isNaN(value.getTime())) {
+    return (value.getTime() - SHEETS_EPOCH) / MS_PER_DAY;
+  }
+
+  return value;
+}
+
+function toIso(value, dateOnly) {
+  if (value === null || value === undefined || value === '') return '';
+  const serial = parseSerial(value);
+  if (serial !== null) {
+    const date = new Date(SHEETS_EPOCH + serial * MS_PER_DAY);
+    return dateOnly ? date.toISOString().slice(0, 10) : date.toISOString();
+  }
+
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (!trimmed) return '';
+    if (dateOnly) {
+      if (ISO_DATETIME_RE.test(trimmed)) return trimmed.split('T')[0];
+      if (ISO_DATE_RE.test(trimmed)) return trimmed;
+    } else {
+      if (ISO_DATE_RE.test(trimmed)) return `${trimmed}T00:00:00.000Z`;
+      if (ISO_DATETIME_RE.test(trimmed)) return trimmed;
+    }
+  }
+
+  return value;
 }
 
 function parseEnrollmentHistory(value) {
@@ -136,16 +219,67 @@ function normalizeChildForSheet(child) {
     normalized.enrollmentHistory = JSON.stringify(normalized.enrollmentHistory);
   }
 
+  CHILD_DATE_FIELDS.forEach(field => {
+    if (field in normalized) {
+      normalized[field] = toSerial(normalized[field], true);
+    }
+  });
+
+  CHILD_DATETIME_FIELDS.forEach(field => {
+    if (field in normalized) {
+      normalized[field] = toSerial(normalized[field], false);
+    }
+  });
+
+  return normalized;
+}
+
+function normalizeRecordForSheet(record) {
+  const normalized = { ...record };
+
+  RECORD_DATE_FIELDS.forEach(field => {
+    if (field in normalized) {
+      normalized[field] = toSerial(normalized[field], true);
+    }
+  });
+
   return normalized;
 }
 
 function normalizeChildrenForApp(children) {
-  return children.map(child => ({
-    ...child,
-    documentsReceived: parseDocumentsReceived(child.documentsReceived),
-    participationDays: parseParticipationDays(child.participationDays),
-    enrollmentHistory: parseEnrollmentHistory(child.enrollmentHistory),
-  }));
+  return children.map(child => {
+    const normalized = { ...child };
+
+    CHILD_DATE_FIELDS.forEach(field => {
+      if (field in normalized) {
+        normalized[field] = toIso(normalized[field], true);
+      }
+    });
+
+    CHILD_DATETIME_FIELDS.forEach(field => {
+      if (field in normalized) {
+        normalized[field] = toIso(normalized[field], false);
+      }
+    });
+
+    normalized.documentsReceived = parseDocumentsReceived(normalized.documentsReceived);
+    normalized.participationDays = parseParticipationDays(normalized.participationDays);
+    normalized.enrollmentHistory = parseEnrollmentHistory(normalized.enrollmentHistory);
+
+    return normalized;
+  });
+}
+
+function normalizeRecordsForApp(records) {
+  return records.map(record => {
+    const normalized = { ...record };
+    RECORD_DATE_FIELDS.forEach(field => {
+      if (field in normalized) {
+        normalized[field] = toIso(normalized[field], true);
+      }
+    });
+    return normalized;
+  });
 }
 
 async function getNextChildId(sheets) {
@@ -189,10 +323,14 @@ module.exports = async (req, res) => {
         sheets.spreadsheets.values.get({
           spreadsheetId: SPREADSHEET_ID,
           range: 'Criancas!A:AM',
+          valueRenderOption: 'UNFORMATTED_VALUE',
+          dateTimeRenderOption: 'SERIAL_NUMBER',
         }),
         sheets.spreadsheets.values.get({
           spreadsheetId: SPREADSHEET_ID,
           range: 'Registros!A:L',
+          valueRenderOption: 'UNFORMATTED_VALUE',
+          dateTimeRenderOption: 'SERIAL_NUMBER',
         }),
       ]);
 
@@ -204,7 +342,9 @@ module.exports = async (req, res) => {
         success: true,
         data: {
           children,
-          records: rowsToObjects(recordsRes.data.values || []),
+          records: normalizeRecordsForApp(
+            rowsToObjects(recordsRes.data.values || [])
+          ),
         },
         lastSync: new Date().toISOString(),
       });
@@ -241,7 +381,8 @@ module.exports = async (req, res) => {
             range: 'Registros!A2:L999',
           });
 
-          const recordsRows = objectsToRows(records, RECORD_HEADERS);
+          const normalizedRecords = records.map(normalizeRecordForSheet);
+          const recordsRows = objectsToRows(normalizedRecords, RECORD_HEADERS);
 
           if (recordsRows.length > 0) {
             await sheets.spreadsheets.values.update({
@@ -286,7 +427,7 @@ module.exports = async (req, res) => {
       }
 
       if (action === 'addRecord') {
-        const record = data || {};
+        const record = normalizeRecordForSheet(data || {});
         const row = [RECORD_HEADERS.map(header => record[header] ?? '')];
 
         await sheets.spreadsheets.values.append({
