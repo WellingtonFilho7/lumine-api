@@ -40,6 +40,13 @@ const CHILD_HEADERS = [
   'enrollmentHistory',
   'entryDate',
   'createdAt',
+  'schoolCommuteAlone',
+  'healthCareNeeded',
+  'dietaryRestriction',
+  'participationDays',
+  'canLeaveAlone',
+  'leaveAloneConsent',
+  'leaveAloneConfirmation',
 ];
 
 const RECORD_HEADERS = [
@@ -109,11 +116,24 @@ function parseDocumentsReceived(value) {
     .filter(Boolean);
 }
 
+function parseParticipationDays(value) {
+  if (!value) return [];
+  if (Array.isArray(value)) return value;
+  return String(value)
+    .split('|')
+    .map(item => item.trim())
+    .filter(Boolean);
+}
+
 function normalizeChildForSheet(child) {
   const normalized = { ...child };
 
   if (Array.isArray(normalized.documentsReceived)) {
     normalized.documentsReceived = normalized.documentsReceived.filter(Boolean).join('|');
+  }
+
+  if (Array.isArray(normalized.participationDays)) {
+    normalized.participationDays = normalized.participationDays.filter(Boolean).join('|');
   }
 
   if (Array.isArray(normalized.enrollmentHistory)) {
@@ -127,6 +147,7 @@ function normalizeChildrenForApp(children) {
   return children.map(child => ({
     ...child,
     documentsReceived: parseDocumentsReceived(child.documentsReceived),
+    participationDays: parseParticipationDays(child.participationDays),
     enrollmentHistory: parseEnrollmentHistory(child.enrollmentHistory),
   }));
 }
@@ -171,7 +192,7 @@ module.exports = async (req, res) => {
       const [childrenRes, recordsRes] = await Promise.all([
         sheets.spreadsheets.values.get({
           spreadsheetId: SPREADSHEET_ID,
-          range: 'Criancas!A:AJ',
+          range: 'Criancas!A:AQ',
         }),
         sheets.spreadsheets.values.get({
           spreadsheetId: SPREADSHEET_ID,
@@ -202,7 +223,7 @@ module.exports = async (req, res) => {
         if (children && children.length > 0) {
           await sheets.spreadsheets.values.clear({
             spreadsheetId: SPREADSHEET_ID,
-            range: 'Criancas!A2:AJ999',
+            range: 'Criancas!A2:AQ999',
           });
 
           const normalizedChildren = children.map(normalizeChildForSheet);
@@ -211,7 +232,7 @@ module.exports = async (req, res) => {
           if (childrenRows.length > 0) {
             await sheets.spreadsheets.values.update({
               spreadsheetId: SPREADSHEET_ID,
-              range: 'Criancas!A2:AJ',
+              range: 'Criancas!A2:AQ',
               valueInputOption: 'RAW',
               resource: { values: childrenRows },
             });
@@ -256,7 +277,7 @@ module.exports = async (req, res) => {
 
         await sheets.spreadsheets.values.append({
           spreadsheetId: SPREADSHEET_ID,
-          range: 'Criancas!A:AJ',
+          range: 'Criancas!A:AQ',
           valueInputOption: 'RAW',
           resource: { values: row },
         });
