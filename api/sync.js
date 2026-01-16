@@ -2,6 +2,13 @@ const { google } = require('googleapis');
 
 const SPREADSHEET_ID = process.env.SPREADSHEET_ID;
 const GOOGLE_CREDENTIALS = JSON.parse(process.env.GOOGLE_CREDENTIALS || '{}');
+const API_TOKEN = process.env.API_TOKEN;
+const ORIGINS_ALLOWLIST = (process.env.ORIGINS_ALLOWLIST || 'https://lumine-webapp.vercel.app')
+  .split(',')
+  .map(origin => origin.trim())
+  .filter(Boolean);
+const BACKUP_ENABLED = process.env.BACKUP_ENABLED !== 'false';
+const MAX_SYNC_BYTES = 4 * 1024 * 1024;
 
 const CHILD_HEADERS = [
   'id',
@@ -86,6 +93,11 @@ async function getAuthClient() {
 async function getSheetsAPI() {
   const authClient = await getAuthClient();
   return google.sheets({ version: 'v4', auth: authClient });
+}
+
+function getAllowedOrigin(origin) {
+  if (!origin) return '';
+  return ORIGINS_ALLOWLIST.includes(origin) ? origin : '';
 }
 
 function rowsToObjects(rows) {
@@ -236,6 +248,8 @@ function normalizeChildForSheet(child) {
 
 function normalizeRecordForSheet(record) {
   const normalized = { ...record };
+  const internalId = normalized.childInternalId || normalized.childId || '';
+  normalized.childId = internalId;
 
   RECORD_DATE_FIELDS.forEach(field => {
     if (field in normalized) {
@@ -273,46 +287,291 @@ function normalizeChildrenForApp(children) {
 function normalizeRecordsForApp(records) {
   return records.map(record => {
     const normalized = { ...record };
+    const internalId = normalized.childInternalId || normalized.childId || '';
+    normalized.childInternalId = internalId;
+    normalized.childId = internalId;
+
     RECORD_DATE_FIELDS.forEach(field => {
       if (field in normalized) {
         normalized[field] = toIso(normalized[field], true);
       }
     });
+
     return normalized;
   });
 }
 
-async function getNextChildId(sheets) {
-  const configRes = await sheets.spreadsheets.values.get({
+async function getConfigValues(sheets) {
+  const res = await sheets.spreadsheets.values.get({
     spreadsheetId: SPREADSHEET_ID,
-    range: 'Config!A2:B2',
+    range: 'Config!A:B',
   });
+  return res.data.values || [];
+}
 
-  const currentValue = parseInt(configRes.data?.values?.[0]?.[1], 10);
+async function setConfigValue(sheets, key, value) {
+  const values = await getConfigValues(sheets);
+  const normalizedValue = value == null ? '' : String(value);
+
+  if (!values.length) {
+    await sheets.spreadsheets.values.update({
+      spreadsheetId: SPREADSHEET_ID,
+      range: 'Config!A1:B2',
+      valueInputOption: 'RAW',
+      requestBody: {
+        values: [
+          ['Campo', 'Valor'],
+          [key, normalizedValue],
+        ],
+      },
+    });
+    return;
+  }
+
+  let rowIndex = -1;
+  for (let i = 1; i < values.length; i += 1) {
+    if (String(values[i][0] || '').trim() === key) {
+      rowIndex = i;
+      break;
+    }
+  }
+
+  if (rowIndex === -1) {
+    await sheets.spreadsheets.values.append({
+      spreadsheetId: SPREADSHEET_ID,
+      range: 'Config!A:B',
+      valueInputOption: 'RAW',
+      requestBody: {
+        values: [[key, normalizedValue]],
+      },
+    });
+    return;
+  }
+
+  await sheets.spreadsheets.values.update({
+    spreadsheetId: SPREADSHEET_ID,
+    range: `Config!A${rowIndex + 1}:B${rowIndex + 1}`,
+    valueInputOption: 'RAW',
+    requestBody: {
+      values: [[key, normalizedValue]],
+    },
+  });
+}
+
+async function getConfigValue(sheets, key, defaultValue) {
+  const values = await getConfigValues(sheets);
+  if (!values.length) {
+    if (defaultValue !== undefined) {
+      await setConfigValue(sheets, key, defaultValue);
+      return defaultValue;
+    }
+    return null;
+  }
+
+  for (let i = 1; i < values.length; i += 1) {
+    if (String(values[i][0] || '').trim() === key) {
+      return values[i][1];
+    }
+  }
+
+  if (defaultValue !== undefined) {
+    await setConfigValue(sheets, key, defaultValue);
+    return defaultValue;
+  }
+
+  return null;
+}
+
+async function getDataRev(sheets) {
+  const raw = await getConfigValue(sheets, 'DATA_REV', 1);
+  let value = parseInt(raw, 10);
+  if (!Number.isFinite(value) || value < 1) {
+    value = 1;
+    await setConfigValue(sheets, 'DATA_REV', value);
+  }
+  return value;
+}
+
+async function setDataRev(sheets, value) {
+  await setConfigValue(sheets, 'DATA_REV', value);
+}
+
+async function bumpDataRev(sheets) {
+  const current = await getDataRev(sheets);
+  const next = current + 1;
+  await setDataRev(sheets, next);
+  return next;
+}
+
+async function getNextChildId(sheets) {
+  const currentValue = parseInt(await getConfigValue(sheets, 'NEXT_CHILD_ID', 1), 10);
   const nextValue = Number.isFinite(currentValue) && currentValue > 0 ? currentValue : 1;
 
   const childId = `CRI-${String(nextValue).padStart(4, '0')}`;
   const updatedValue = nextValue + 1;
 
-  await sheets.spreadsheets.values.update({
-    spreadsheetId: SPREADSHEET_ID,
-    range: 'Config!A2:B2',
-    valueInputOption: 'RAW',
-    requestBody: {
-      values: [['NEXT_CHILD_ID', String(updatedValue)]],
-    },
-  });
+  await setConfigValue(sheets, 'NEXT_CHILD_ID', updatedValue);
 
   return childId;
 }
 
+function countFilled(values) {
+  return values.filter(row => String(row?.[0] || '').trim() !== '').length;
+}
+
+async function countServerRows(sheets, range) {
+  const res = await sheets.spreadsheets.values.get({
+    spreadsheetId: SPREADSHEET_ID,
+    range,
+  });
+  return countFilled(res.data.values || []);
+}
+
+function formatBackupSuffix(date = new Date()) {
+  const pad = value => String(value).padStart(2, '0');
+  const padMs = value => String(value).padStart(3, '0');
+  return `${date.getFullYear()}${pad(date.getMonth() + 1)}${pad(date.getDate())}_${pad(
+    date.getHours()
+  )}${pad(date.getMinutes())}${pad(date.getSeconds())}_${padMs(date.getMilliseconds())}`;
+}
+
+async function listSheets(sheets) {
+  const meta = await sheets.spreadsheets.get({ spreadsheetId: SPREADSHEET_ID });
+  return meta.data.sheets || [];
+}
+
+async function getSheetByTitle(sheets, title) {
+  const allSheets = await listSheets(sheets);
+  return allSheets.find(sheet => sheet.properties.title === title);
+}
+
+async function renameSheet(sheets, sheetId, title) {
+  await sheets.spreadsheets.batchUpdate({
+    spreadsheetId: SPREADSHEET_ID,
+    requestBody: {
+      requests: [
+        {
+          updateSheetProperties: {
+            properties: { sheetId, title },
+            fields: 'title',
+          },
+        },
+      ],
+    },
+  });
+}
+
+async function createBackup(sheets, sourceTitle, prefix) {
+  const source = await getSheetByTitle(sheets, sourceTitle);
+  if (!source) throw new Error(`Aba ${sourceTitle} nao encontrada.`);
+
+  const copyRes = await sheets.spreadsheets.sheets.copyTo({
+    spreadsheetId: SPREADSHEET_ID,
+    sheetId: source.properties.sheetId,
+    requestBody: { destinationSpreadsheetId: SPREADSHEET_ID },
+  });
+
+  const newSheetId = copyRes.data.sheetId;
+  const title = `${prefix}_${formatBackupSuffix()}`;
+  await renameSheet(sheets, newSheetId, title);
+
+  return title;
+}
+
+async function deleteSheetsByPrefix(sheets, prefix, keep = 10) {
+  const allSheets = await listSheets(sheets);
+  const backups = allSheets
+    .filter(sheet => sheet.properties.title.startsWith(`${prefix}_`))
+    .sort((a, b) => a.properties.title.localeCompare(b.properties.title));
+
+  if (backups.length <= keep) return [];
+
+  const toDelete = backups.slice(0, backups.length - keep);
+  if (!toDelete.length) return [];
+
+  await sheets.spreadsheets.batchUpdate({
+    spreadsheetId: SPREADSHEET_ID,
+    requestBody: {
+      requests: toDelete.map(sheet => ({
+        deleteSheet: { sheetId: sheet.properties.sheetId },
+      })),
+    },
+  });
+
+  return toDelete.map(sheet => sheet.properties.title);
+}
+
+function isEmptyEnrollmentHistory(value) {
+  if (value == null || value === '') return true;
+  if (Array.isArray(value)) return value.length === 0;
+  if (typeof value === 'string') return value.trim() === '';
+  return false;
+}
+
+function normalizeRecordsPayload(records = []) {
+  return records.map(record => {
+    const internalId = record.childInternalId || record.childId || '';
+    return {
+      ...record,
+      childInternalId: internalId,
+      childId: internalId,
+    };
+  });
+}
+
+function validateChildrenPayload(children = []) {
+  if (!Array.isArray(children)) return 'children must be an array';
+  for (const child of children) {
+    if (!child || !child.id) return 'child id is required';
+  }
+  return null;
+}
+
+function validateRecordsPayload(records = []) {
+  if (!Array.isArray(records)) return 'records must be an array';
+  for (const record of records) {
+    if (!record) return 'record is required';
+    const internalId = record.childInternalId || record.childId;
+    if (!internalId) return 'record childInternalId is required';
+    if (!record.date) return 'record date is required';
+  }
+  return null;
+}
+
 module.exports = async (req, res) => {
-  res.setHeader('Access-Control-Allow-Origin', '*');
+  const origin = req.headers.origin;
+  const allowedOrigin = getAllowedOrigin(origin);
+
+  if (allowedOrigin) {
+    res.setHeader('Access-Control-Allow-Origin', allowedOrigin);
+    res.setHeader('Vary', 'Origin');
+  }
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  res.setHeader('Access-Control-Allow-Headers', 'Authorization, Content-Type');
 
   if (req.method === 'OPTIONS') {
     return res.status(200).end();
+  }
+
+  if (!BACKUP_ENABLED) {
+    console.log('BACKUP_ENABLED=false (backup desativado por configuração)');
+  }
+
+  if (origin && !allowedOrigin) {
+    return res.status(403).json({
+      success: false,
+      error: 'FORBIDDEN_ORIGIN',
+      message: 'Origem não permitida',
+    });
+  }
+
+  const authHeader = req.headers.authorization || '';
+  if (!API_TOKEN || authHeader !== `Bearer ${API_TOKEN}`) {
+    return res.status(401).json({
+      success: false,
+      error: 'UNAUTHORIZED',
+      message: 'Não autorizado',
+    });
   }
 
   try {
@@ -337,71 +596,192 @@ module.exports = async (req, res) => {
       const children = normalizeChildrenForApp(
         rowsToObjects(childrenRes.data.values || [])
       );
+      const records = normalizeRecordsForApp(
+        rowsToObjects(recordsRes.data.values || [])
+      );
+      const dataRev = await getDataRev(sheets);
 
       return res.status(200).json({
         success: true,
         data: {
           children,
-          records: normalizeRecordsForApp(
-            rowsToObjects(recordsRes.data.values || [])
-          ),
+          records,
         },
+        dataRev,
         lastSync: new Date().toISOString(),
       });
     }
 
     if (req.method === 'POST') {
-      const { action, data } = req.body || {};
+      const { action, data, ifMatchRev } = req.body || {};
 
       if (action === 'sync') {
-        const { children, records } = data;
-
-        if (children && children.length > 0) {
-          await sheets.spreadsheets.values.clear({
-            spreadsheetId: SPREADSHEET_ID,
-            range: 'Criancas!A2:AM999',
+        if (typeof ifMatchRev !== 'number') {
+          return res.status(400).json({
+            success: false,
+            error: 'MISSING_IF_MATCH_REV',
+            message: 'ifMatchRev é obrigatório',
           });
-
-          const normalizedChildren = children.map(normalizeChildForSheet);
-          const childrenRows = objectsToRows(normalizedChildren, CHILD_HEADERS);
-
-          if (childrenRows.length > 0) {
-            await sheets.spreadsheets.values.update({
-              spreadsheetId: SPREADSHEET_ID,
-              range: 'Criancas!A2:AM',
-              valueInputOption: 'RAW',
-              resource: { values: childrenRows },
-            });
-          }
         }
 
-        if (records && records.length > 0) {
-          await sheets.spreadsheets.values.clear({
-            spreadsheetId: SPREADSHEET_ID,
-            range: 'Registros!A2:L999',
+        const bodySize = Buffer.byteLength(JSON.stringify(req.body || {}));
+        if (bodySize > MAX_SYNC_BYTES) {
+          return res.status(413).json({
+            success: false,
+            error: 'PAYLOAD_TOO_LARGE',
+            message: 'Payload excede limite',
           });
-
-          const normalizedRecords = records.map(normalizeRecordForSheet);
-          const recordsRows = objectsToRows(normalizedRecords, RECORD_HEADERS);
-
-          if (recordsRows.length > 0) {
-            await sheets.spreadsheets.values.update({
-              spreadsheetId: SPREADSHEET_ID,
-              range: 'Registros!A2:L',
-              valueInputOption: 'RAW',
-              resource: { values: recordsRows },
-            });
-          }
         }
+
+        const children = data?.children;
+        const records = data?.records;
+        if (!Array.isArray(children) || !Array.isArray(records)) {
+          return res.status(400).json({
+            success: false,
+            error: 'INVALID_PAYLOAD',
+            message: 'Payload inválido',
+          });
+        }
+        const childrenError = validateChildrenPayload(children);
+        const recordsError = validateRecordsPayload(records);
+        if (childrenError || recordsError) {
+          return res.status(400).json({
+            success: false,
+            error: 'INVALID_PAYLOAD',
+            message: 'Payload inválido',
+          });
+        }
+
+        const serverRev = await getDataRev(sheets);
+        if (ifMatchRev !== serverRev) {
+          return res.status(409).json({
+            success: false,
+            error: 'REVISION_MISMATCH',
+            serverRev,
+            clientRev: ifMatchRev,
+            message:
+              'Dados foram alterados por outro dispositivo. Baixe a versão atual primeiro.',
+          });
+        }
+
+        const [countChildrenServer, countRecordsServer] = await Promise.all([
+          countServerRows(sheets, 'Criancas!A2:A'),
+          countServerRows(sheets, 'Registros!A2:A'),
+        ]);
+
+        if (children.length < countChildrenServer || records.length < countRecordsServer) {
+          return res.status(409).json({
+            success: false,
+            error: 'DATA_LOSS_PREVENTED',
+            serverCount: {
+              children: countChildrenServer,
+              records: countRecordsServer,
+            },
+            clientCount: {
+              children: children.length,
+              records: records.length,
+            },
+            message: 'Servidor tem mais dados. Baixe primeiro.',
+          });
+        }
+
+        if (BACKUP_ENABLED) {
+          const created = [];
+          const backupChildren = await createBackup(sheets, 'Criancas', 'Criancas_backup');
+          created.push(backupChildren);
+          const backupRecords = await createBackup(sheets, 'Registros', 'Registros_backup');
+          created.push(backupRecords);
+          console.log('Backups criados:', created.join(', '));
+
+          const deletedChildren = await deleteSheetsByPrefix(sheets, 'Criancas_backup', 10);
+          if (deletedChildren.length) {
+            console.log('Backups Criancas removidos:', deletedChildren.join(', '));
+          }
+          const deletedRecords = await deleteSheetsByPrefix(sheets, 'Registros_backup', 10);
+          if (deletedRecords.length) {
+            console.log('Backups Registros removidos:', deletedRecords.join(', '));
+          }
+        } else {
+          console.log('BACKUP_ENABLED=false (backup desativado por configuração)');
+        }
+
+        const serverChildrenRes = await sheets.spreadsheets.values.get({
+          spreadsheetId: SPREADSHEET_ID,
+          range: 'Criancas!A:AM',
+          valueRenderOption: 'UNFORMATTED_VALUE',
+          dateTimeRenderOption: 'SERIAL_NUMBER',
+        });
+        const serverChildren = rowsToObjects(serverChildrenRes.data.values || []);
+        const serverHistoryById = new Map();
+        serverChildren.forEach(child => {
+          if (!child.id) return;
+          if (!isEmptyEnrollmentHistory(child.enrollmentHistory)) {
+            serverHistoryById.set(child.id, child.enrollmentHistory);
+          }
+        });
+
+        const payloadChildren = children.map(child => {
+          if (!child.id) return child;
+          const hasHistory = !isEmptyEnrollmentHistory(child.enrollmentHistory);
+          if (!hasHistory && serverHistoryById.has(child.id)) {
+            return { ...child, enrollmentHistory: serverHistoryById.get(child.id) };
+          }
+          return child;
+        });
+
+        await sheets.spreadsheets.values.clear({
+          spreadsheetId: SPREADSHEET_ID,
+          range: 'Criancas!A2:AM999',
+        });
+
+        const normalizedChildren = payloadChildren.map(normalizeChildForSheet);
+        const childrenRows = objectsToRows(normalizedChildren, CHILD_HEADERS);
+
+        if (childrenRows.length > 0) {
+          await sheets.spreadsheets.values.update({
+            spreadsheetId: SPREADSHEET_ID,
+            range: 'Criancas!A2:AM',
+            valueInputOption: 'RAW',
+            resource: { values: childrenRows },
+          });
+        }
+
+        await sheets.spreadsheets.values.clear({
+          spreadsheetId: SPREADSHEET_ID,
+          range: 'Registros!A2:L999',
+        });
+
+        const normalizedRecordsPayload = normalizeRecordsPayload(records);
+        const normalizedRecords = normalizedRecordsPayload.map(normalizeRecordForSheet);
+        const recordsRows = objectsToRows(normalizedRecords, RECORD_HEADERS);
+
+        if (recordsRows.length > 0) {
+          await sheets.spreadsheets.values.update({
+            spreadsheetId: SPREADSHEET_ID,
+            range: 'Registros!A2:L',
+            valueInputOption: 'RAW',
+            resource: { values: recordsRows },
+          });
+        }
+
+        const dataRev = await bumpDataRev(sheets);
 
         return res.status(200).json({
           success: true,
-          message: 'Sincronizado com sucesso',
+          dataRev,
           lastSync: new Date().toISOString(),
         });
       }
 
       if (action === 'addChild') {
+        if (!data || !data.id) {
+          return res.status(400).json({
+            success: false,
+            error: 'INVALID_PAYLOAD',
+            message: 'Payload inválido',
+          });
+        }
+
         let child = data || {};
 
         if (!child.childId) {
@@ -419,15 +799,27 @@ module.exports = async (req, res) => {
           resource: { values: row },
         });
 
+        const dataRev = await bumpDataRev(sheets);
+
         return res.status(200).json({
           success: true,
           message: 'Criança adicionada',
           childId: normalizedChild.childId,
+          dataRev,
         });
       }
 
       if (action === 'addRecord') {
-        const record = normalizeRecordForSheet(data || {});
+        if (!data || !data.date || !(data.childInternalId || data.childId)) {
+          return res.status(400).json({
+            success: false,
+            error: 'INVALID_PAYLOAD',
+            message: 'Payload inválido',
+          });
+        }
+
+        const recordPayload = normalizeRecordsPayload([data])[0];
+        const record = normalizeRecordForSheet(recordPayload);
         const row = [RECORD_HEADERS.map(header => record[header] ?? '')];
 
         await sheets.spreadsheets.values.append({
@@ -437,9 +829,16 @@ module.exports = async (req, res) => {
           resource: { values: row },
         });
 
+        const dataRev = await bumpDataRev(sheets);
+
         return res.status(200).json({
           success: true,
           message: 'Registro adicionado',
+          dataRev,
+          record: {
+            ...recordPayload,
+            childId: recordPayload.childInternalId,
+          },
         });
       }
     }
