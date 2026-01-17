@@ -2,10 +2,12 @@ const fs = require('fs');
 const path = require('path');
 const { google } = require('googleapis');
 
-const [spreadsheetId, credentialsPath] = process.argv.slice(2);
+const [spreadsheetId, credentialsPath, backupSpreadsheetId] = process.argv.slice(2);
 
 if (!spreadsheetId || !credentialsPath) {
-  console.error('Usage: node scripts/format-main-sheet.js <spreadsheetId> <credentialsPath>');
+  console.error(
+    'Usage: node scripts/format-main-sheet.js <spreadsheetId> <credentialsPath> [backupSpreadsheetId]'
+  );
   process.exit(1);
 }
 
@@ -19,6 +21,7 @@ const COLORS = {
   bandEven: { red: 223 / 255, green: 223 / 255, blue: 223 / 255 },
   accent: { red: 255 / 255, green: 145 / 255, blue: 2 / 255 },
 };
+const COLUMN_WIDTH = 160;
 
 async function getSheetsAPI() {
   const auth = new google.auth.GoogleAuth({
@@ -32,26 +35,26 @@ function isBackupTab(title) {
   return title.startsWith('Criancas_backup_') || title.startsWith('Registros_backup_');
 }
 
-async function main() {
-  const sheets = await getSheetsAPI();
-
-  const meta = await sheets.spreadsheets.get({ spreadsheetId });
+async function formatSpreadsheet(sheets, targetSpreadsheetId, removeBackupTabs) {
+  const meta = await sheets.spreadsheets.get({ spreadsheetId: targetSpreadsheetId });
   const existingSheets = meta.data.sheets || [];
 
-  const deleteRequests = existingSheets
-    .filter(sheet => isBackupTab(sheet.properties.title))
-    .map(sheet => ({ deleteSheet: { sheetId: sheet.properties.sheetId } }));
+  if (removeBackupTabs) {
+    const deleteRequests = existingSheets
+      .filter(sheet => isBackupTab(sheet.properties.title))
+      .map(sheet => ({ deleteSheet: { sheetId: sheet.properties.sheetId } }));
 
-  if (deleteRequests.length) {
-    await sheets.spreadsheets.batchUpdate({
-      spreadsheetId,
-      requestBody: { requests: deleteRequests },
-    });
+    if (deleteRequests.length) {
+      await sheets.spreadsheets.batchUpdate({
+        spreadsheetId: targetSpreadsheetId,
+        requestBody: { requests: deleteRequests },
+      });
+    }
   }
 
-  const updatedMeta = await sheets.spreadsheets.get({ spreadsheetId });
+  const updatedMeta = await sheets.spreadsheets.get({ spreadsheetId: targetSpreadsheetId });
   const updatedSheets = (updatedMeta.data.sheets || []).filter(
-    sheet => !isBackupTab(sheet.properties.title)
+    sheet => !(removeBackupTabs && isBackupTab(sheet.properties.title))
   );
 
   const requests = [];
@@ -63,7 +66,7 @@ async function main() {
     const bandedRanges = sheet.bandedRanges || [];
 
     const headerRes = await sheets.spreadsheets.values.get({
-      spreadsheetId,
+      spreadsheetId: targetSpreadsheetId,
       range: `${title}!1:1`,
     });
     const headerRow = headerRes.data.values?.[0] || [];
@@ -76,6 +79,33 @@ async function main() {
     for (const band of bandedRanges) {
       requests.push({ deleteBanding: { bandedRangeId: band.bandedRangeId } });
     }
+
+    requests.push({
+      updateSheetProperties: {
+        properties: {
+          sheetId,
+          gridProperties: {
+            frozenRowCount: 1,
+          },
+        },
+        fields: 'gridProperties.frozenRowCount',
+      },
+    });
+
+    requests.push({
+      updateDimensionProperties: {
+        range: {
+          sheetId,
+          dimension: 'COLUMNS',
+          startIndex: 0,
+          endIndex: colCount,
+        },
+        properties: {
+          pixelSize: COLUMN_WIDTH,
+        },
+        fields: 'pixelSize',
+      },
+    });
 
     requests.push({
       addBanding: {
@@ -152,9 +182,21 @@ async function main() {
 
   if (requests.length) {
     await sheets.spreadsheets.batchUpdate({
-      spreadsheetId,
+      spreadsheetId: targetSpreadsheetId,
       requestBody: { requests },
     });
+  }
+
+  console.log(`Formatacao aplicada: ${targetSpreadsheetId}`);
+}
+
+async function main() {
+  const sheets = await getSheetsAPI();
+
+  await formatSpreadsheet(sheets, spreadsheetId, true);
+
+  if (backupSpreadsheetId) {
+    await formatSpreadsheet(sheets, backupSpreadsheetId, false);
   }
 
   console.log('Formatacao aplicada e abas de backup removidas.');
