@@ -8,6 +8,7 @@ const ORIGINS_ALLOWLIST = (process.env.ORIGINS_ALLOWLIST || 'https://lumine-weba
   .map(origin => origin.trim())
   .filter(Boolean);
 const BACKUP_ENABLED = process.env.BACKUP_ENABLED !== 'false';
+const BACKUP_SPREADSHEET_ID = process.env.BACKUP_SPREADSHEET_ID;
 const MAX_SYNC_BYTES = 4 * 1024 * 1024;
 
 const CHILD_HEADERS = [
@@ -419,86 +420,133 @@ function countFilled(values) {
   return values.filter(row => String(row?.[0] || '').trim() !== '').length;
 }
 
-async function countServerRows(sheets, range) {
-  const res = await sheets.spreadsheets.values.get({
-    spreadsheetId: SPREADSHEET_ID,
-    range,
-  });
-  return countFilled(res.data.values || []);
+async function getServerCounts(sheets) {
+  const [childrenRes, recordsRes] = await Promise.all([
+    sheets.spreadsheets.values.get({
+      spreadsheetId: SPREADSHEET_ID,
+      range: 'Criancas!A:AM',
+    }),
+    sheets.spreadsheets.values.get({
+      spreadsheetId: SPREADSHEET_ID,
+      range: 'Registros!A:L',
+    }),
+  ]);
+
+  return {
+    children: countFilled((childrenRes.data.values || []).slice(1)),
+    records: countFilled((recordsRes.data.values || []).slice(1)),
+  };
 }
 
-function formatBackupSuffix(date = new Date()) {
-  const pad = value => String(value).padStart(2, '0');
-  const padMs = value => String(value).padStart(3, '0');
-  return `${date.getFullYear()}${pad(date.getMonth() + 1)}${pad(date.getDate())}_${pad(
-    date.getHours()
-  )}${pad(date.getMinutes())}${pad(date.getSeconds())}_${padMs(date.getMilliseconds())}`;
-}
 
-async function listSheets(sheets) {
-  const meta = await sheets.spreadsheets.get({ spreadsheetId: SPREADSHEET_ID });
+async function listSheets(sheets, spreadsheetId) {
+  const meta = await sheets.spreadsheets.get({ spreadsheetId });
   return meta.data.sheets || [];
 }
 
-async function getSheetByTitle(sheets, title) {
-  const allSheets = await listSheets(sheets);
-  return allSheets.find(sheet => sheet.properties.title === title);
-}
+async function ensureSheet(sheets, spreadsheetId, title) {
+  const allSheets = await listSheets(sheets, spreadsheetId);
+  const existing = allSheets.find(sheet => sheet.properties.title === title);
+  if (existing) return existing.properties.sheetId;
 
-async function renameSheet(sheets, sheetId, title) {
-  await sheets.spreadsheets.batchUpdate({
-    spreadsheetId: SPREADSHEET_ID,
+  const addRes = await sheets.spreadsheets.batchUpdate({
+    spreadsheetId,
     requestBody: {
-      requests: [
-        {
-          updateSheetProperties: {
-            properties: { sheetId, title },
-            fields: 'title',
-          },
-        },
-      ],
-    },
-  });
-}
-
-async function createBackup(sheets, sourceTitle, prefix) {
-  const source = await getSheetByTitle(sheets, sourceTitle);
-  if (!source) throw new Error(`Aba ${sourceTitle} nao encontrada.`);
-
-  const copyRes = await sheets.spreadsheets.sheets.copyTo({
-    spreadsheetId: SPREADSHEET_ID,
-    sheetId: source.properties.sheetId,
-    requestBody: { destinationSpreadsheetId: SPREADSHEET_ID },
-  });
-
-  const newSheetId = copyRes.data.sheetId;
-  const title = `${prefix}_${formatBackupSuffix()}`;
-  await renameSheet(sheets, newSheetId, title);
-
-  return title;
-}
-
-async function deleteSheetsByPrefix(sheets, prefix, keep = 10) {
-  const allSheets = await listSheets(sheets);
-  const backups = allSheets
-    .filter(sheet => sheet.properties.title.startsWith(`${prefix}_`))
-    .sort((a, b) => a.properties.title.localeCompare(b.properties.title));
-
-  if (backups.length <= keep) return [];
-
-  const toDelete = backups.slice(0, backups.length - keep);
-  if (!toDelete.length) return [];
-
-  await sheets.spreadsheets.batchUpdate({
-    spreadsheetId: SPREADSHEET_ID,
-    requestBody: {
-      requests: toDelete.map(sheet => ({
-        deleteSheet: { sheetId: sheet.properties.sheetId },
-      })),
+      requests: [{ addSheet: { properties: { title } } }],
     },
   });
 
-  return toDelete.map(sheet => sheet.properties.title);
+  return addRes.data.replies[0].addSheet.properties.sheetId;
+}
+
+async function clearAndWriteSheet(sheets, spreadsheetId, title, values, clearRange, headers) {
+  await ensureSheet(sheets, spreadsheetId, title);
+  await sheets.spreadsheets.values.clear({
+    spreadsheetId,
+    range: `${title}!${clearRange}`,
+  });
+
+  const payload = values && values.length ? values : [headers];
+
+  await sheets.spreadsheets.values.update({
+    spreadsheetId,
+    range: `${title}!A1`,
+    valueInputOption: 'RAW',
+    requestBody: { values: payload },
+  });
+}
+
+const AUDIT_HEADERS = [
+  'timestamp',
+  'action',
+  'dataRev',
+  'childrenCount',
+  'recordsCount',
+  'result',
+  'message',
+];
+
+async function ensureAuditSheet(sheets) {
+  await ensureSheet(sheets, SPREADSHEET_ID, 'Audit');
+  const headerRes = await sheets.spreadsheets.values.get({
+    spreadsheetId: SPREADSHEET_ID,
+    range: 'Audit!A1:G1',
+  });
+  const headerRow = headerRes.data.values?.[0] || [];
+  const headerMatches = AUDIT_HEADERS.every((header, idx) => headerRow[idx] === header);
+  if (!headerMatches) {
+    await sheets.spreadsheets.values.update({
+      spreadsheetId: SPREADSHEET_ID,
+      range: 'Audit!A1:G1',
+      valueInputOption: 'RAW',
+      requestBody: { values: [AUDIT_HEADERS] },
+    });
+  }
+}
+
+async function appendAudit(sheets, entry) {
+  await ensureAuditSheet(sheets);
+  await sheets.spreadsheets.values.append({
+    spreadsheetId: SPREADSHEET_ID,
+    range: 'Audit!A:G',
+    valueInputOption: 'RAW',
+    requestBody: { values: [[
+      entry.timestamp,
+      entry.action,
+      entry.dataRev,
+      entry.childrenCount,
+      entry.recordsCount,
+      entry.result,
+      entry.message,
+    ]] },
+  });
+}
+
+async function backupToSecondarySheet(sheets, childrenValues, recordsValues) {
+  if (!BACKUP_SPREADSHEET_ID) {
+    console.log('BACKUP_SPREADSHEET_ID não configurado; backup ignorado.');
+    return;
+  }
+
+  await clearAndWriteSheet(
+    sheets,
+    BACKUP_SPREADSHEET_ID,
+    'Criancas',
+    childrenValues,
+    'A:AM',
+    CHILD_HEADERS
+  );
+
+  await clearAndWriteSheet(
+    sheets,
+    BACKUP_SPREADSHEET_ID,
+    'Registros',
+    recordsValues,
+    'A:L',
+    RECORD_HEADERS
+  );
+
+  console.log('Backup atualizado no Sheets de backup.');
 }
 
 function isEmptyEnrollmentHistory(value) {
@@ -664,10 +712,25 @@ module.exports = async (req, res) => {
           });
         }
 
-        const [countChildrenServer, countRecordsServer] = await Promise.all([
-          countServerRows(sheets, 'Criancas!A2:A'),
-          countServerRows(sheets, 'Registros!A2:A'),
+        const [serverChildrenRes, serverRecordsRes] = await Promise.all([
+          sheets.spreadsheets.values.get({
+            spreadsheetId: SPREADSHEET_ID,
+            range: 'Criancas!A:AM',
+            valueRenderOption: 'UNFORMATTED_VALUE',
+            dateTimeRenderOption: 'SERIAL_NUMBER',
+          }),
+          sheets.spreadsheets.values.get({
+            spreadsheetId: SPREADSHEET_ID,
+            range: 'Registros!A:L',
+            valueRenderOption: 'UNFORMATTED_VALUE',
+            dateTimeRenderOption: 'SERIAL_NUMBER',
+          }),
         ]);
+
+        const serverChildrenValues = serverChildrenRes.data.values || [];
+        const serverRecordsValues = serverRecordsRes.data.values || [];
+        const countChildrenServer = countFilled(serverChildrenValues.slice(1));
+        const countRecordsServer = countFilled(serverRecordsValues.slice(1));
 
         if (children.length < countChildrenServer || records.length < countRecordsServer) {
           return res.status(409).json({
@@ -686,31 +749,11 @@ module.exports = async (req, res) => {
         }
 
         if (BACKUP_ENABLED) {
-          const created = [];
-          const backupChildren = await createBackup(sheets, 'Criancas', 'Criancas_backup');
-          created.push(backupChildren);
-          const backupRecords = await createBackup(sheets, 'Registros', 'Registros_backup');
-          created.push(backupRecords);
-          console.log('Backups criados:', created.join(', '));
-
-          const deletedChildren = await deleteSheetsByPrefix(sheets, 'Criancas_backup', 10);
-          if (deletedChildren.length) {
-            console.log('Backups Criancas removidos:', deletedChildren.join(', '));
-          }
-          const deletedRecords = await deleteSheetsByPrefix(sheets, 'Registros_backup', 10);
-          if (deletedRecords.length) {
-            console.log('Backups Registros removidos:', deletedRecords.join(', '));
-          }
+          await backupToSecondarySheet(sheets, serverChildrenValues, serverRecordsValues);
         } else {
           console.log('BACKUP_ENABLED=false (backup desativado por configuração)');
         }
 
-        const serverChildrenRes = await sheets.spreadsheets.values.get({
-          spreadsheetId: SPREADSHEET_ID,
-          range: 'Criancas!A:AM',
-          valueRenderOption: 'UNFORMATTED_VALUE',
-          dateTimeRenderOption: 'SERIAL_NUMBER',
-        });
         const serverChildren = rowsToObjects(serverChildrenRes.data.values || []);
         const serverHistoryById = new Map();
         serverChildren.forEach(child => {
@@ -765,6 +808,19 @@ module.exports = async (req, res) => {
         }
 
         const dataRev = await bumpDataRev(sheets);
+        try {
+          await appendAudit(sheets, {
+            timestamp: new Date().toISOString(),
+            action: 'sync',
+            dataRev,
+            childrenCount: children.length,
+            recordsCount: records.length,
+            result: 'success',
+            message: 'overwrite',
+          });
+        } catch (error) {
+          console.error('Erro ao registrar auditoria:', error);
+        }
 
         return res.status(200).json({
           success: true,
@@ -800,6 +856,20 @@ module.exports = async (req, res) => {
         });
 
         const dataRev = await bumpDataRev(sheets);
+        try {
+          const counts = await getServerCounts(sheets);
+          await appendAudit(sheets, {
+            timestamp: new Date().toISOString(),
+            action: 'addChild',
+            dataRev,
+            childrenCount: counts.children,
+            recordsCount: counts.records,
+            result: 'success',
+            message: 'append',
+          });
+        } catch (error) {
+          console.error('Erro ao registrar auditoria:', error);
+        }
 
         return res.status(200).json({
           success: true,
@@ -830,6 +900,20 @@ module.exports = async (req, res) => {
         });
 
         const dataRev = await bumpDataRev(sheets);
+        try {
+          const counts = await getServerCounts(sheets);
+          await appendAudit(sheets, {
+            timestamp: new Date().toISOString(),
+            action: 'addRecord',
+            dataRev,
+            childrenCount: counts.children,
+            recordsCount: counts.records,
+            result: 'success',
+            message: 'append',
+          });
+        } catch (error) {
+          console.error('Erro ao registrar auditoria:', error);
+        }
 
         return res.status(200).json({
           success: true,
