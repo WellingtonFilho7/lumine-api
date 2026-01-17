@@ -21,7 +21,11 @@ const COLORS = {
   bandEven: { red: 223 / 255, green: 223 / 255, blue: 223 / 255 },
   accent: { red: 255 / 255, green: 145 / 255, blue: 2 / 255 },
 };
-const COLUMN_WIDTH = 160;
+
+const MIN_COL_WIDTH = 90;
+const MAX_COL_WIDTH = 220;
+const CHAR_PX = 8;
+const PADDING_PX = 24;
 
 async function getSheetsAPI() {
   const auth = new google.auth.GoogleAuth({
@@ -33,6 +37,16 @@ async function getSheetsAPI() {
 
 function isBackupTab(title) {
   return title.startsWith('Criancas_backup_') || title.startsWith('Registros_backup_');
+}
+
+function clampWidth(value) {
+  return Math.max(MIN_COL_WIDTH, Math.min(MAX_COL_WIDTH, value));
+}
+
+function widthForHeader(header) {
+  const length = header ? String(header).trim().length : 0;
+  if (!length) return MIN_COL_WIDTH;
+  return clampWidth(length * CHAR_PX + PADDING_PX);
 }
 
 async function formatSpreadsheet(sheets, targetSpreadsheetId, removeBackupTabs) {
@@ -92,18 +106,39 @@ async function formatSpreadsheet(sheets, targetSpreadsheetId, removeBackupTabs) 
       },
     });
 
+    for (let i = 0; i < colCount; i += 1) {
+      const width = widthForHeader(headerRow[i]);
+      requests.push({
+        updateDimensionProperties: {
+          range: {
+            sheetId,
+            dimension: 'COLUMNS',
+            startIndex: i,
+            endIndex: i + 1,
+          },
+          properties: {
+            pixelSize: width,
+          },
+          fields: 'pixelSize',
+        },
+      });
+    }
+
     requests.push({
-      updateDimensionProperties: {
+      repeatCell: {
         range: {
           sheetId,
-          dimension: 'COLUMNS',
-          startIndex: 0,
-          endIndex: colCount,
+          startRowIndex: 1,
+          endRowIndex: rowCount,
+          startColumnIndex: 0,
+          endColumnIndex: colCount,
         },
-        properties: {
-          pixelSize: COLUMN_WIDTH,
+        cell: {
+          userEnteredFormat: {
+            wrapStrategy: 'WRAP',
+          },
         },
-        fields: 'pixelSize',
+        fields: 'userEnteredFormat.wrapStrategy',
       },
     });
 
