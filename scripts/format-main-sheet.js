@@ -27,6 +27,10 @@ const MAX_COL_WIDTH = 220;
 const CHAR_PX = 8;
 const PADDING_PX = 24;
 
+const REGISTROS_HEADER = 'childName';
+const REGISTROS_FORMULA =
+  '=ARRAYFORMULA(SE(B2:B="";"";SEERRO(PROCV(B2:B;Criancas!A:C;3;FALSO);"")))';
+
 async function getSheetsAPI() {
   const auth = new google.auth.GoogleAuth({
     credentials,
@@ -47,6 +51,20 @@ function widthForHeader(header) {
   const length = header ? String(header).trim().length : 0;
   if (!length) return MIN_COL_WIDTH;
   return clampWidth(length * CHAR_PX + PADDING_PX);
+}
+
+async function ensureRegistrosIdentifier(sheets, targetSpreadsheetId) {
+  await sheets.spreadsheets.values.update({
+    spreadsheetId: targetSpreadsheetId,
+    range: 'Registros!M1:M2',
+    valueInputOption: 'USER_ENTERED',
+    requestBody: {
+      values: [
+        [REGISTROS_HEADER],
+        [REGISTROS_FORMULA],
+      ],
+    },
+  });
 }
 
 async function formatSpreadsheet(sheets, targetSpreadsheetId, removeBackupTabs) {
@@ -78,6 +96,10 @@ async function formatSpreadsheet(sheets, targetSpreadsheetId, removeBackupTabs) 
     const rowCount = gridProperties?.rowCount || 1000;
     const colCountFallback = gridProperties?.columnCount || 26;
     const bandedRanges = sheet.bandedRanges || [];
+
+    if (title === 'Registros') {
+      await ensureRegistrosIdentifier(sheets, targetSpreadsheetId);
+    }
 
     const headerRes = await sheets.spreadsheets.values.get({
       spreadsheetId: targetSpreadsheetId,
@@ -135,7 +157,7 @@ async function formatSpreadsheet(sheets, targetSpreadsheetId, removeBackupTabs) 
         },
         cell: {
           userEnteredFormat: {
-            wrapStrategy: 'WRAP',
+            wrapStrategy: 'OVERFLOW_CELL',
           },
         },
         fields: 'userEnteredFormat.wrapStrategy',
