@@ -484,20 +484,22 @@ const AUDIT_HEADERS = [
   'recordsCount',
   'result',
   'message',
+  'deviceId',
+  'appVersion',
 ];
 
 async function ensureAuditSheet(sheets) {
   await ensureSheet(sheets, SPREADSHEET_ID, 'Audit');
   const headerRes = await sheets.spreadsheets.values.get({
     spreadsheetId: SPREADSHEET_ID,
-    range: 'Audit!A1:G1',
+    range: 'Audit!A1:I1',
   });
   const headerRow = headerRes.data.values?.[0] || [];
   const headerMatches = AUDIT_HEADERS.every((header, idx) => headerRow[idx] === header);
   if (!headerMatches) {
     await sheets.spreadsheets.values.update({
       spreadsheetId: SPREADSHEET_ID,
-      range: 'Audit!A1:G1',
+      range: 'Audit!A1:I1',
       valueInputOption: 'RAW',
       requestBody: { values: [AUDIT_HEADERS] },
     });
@@ -508,7 +510,7 @@ async function appendAudit(sheets, entry) {
   await ensureAuditSheet(sheets);
   await sheets.spreadsheets.values.append({
     spreadsheetId: SPREADSHEET_ID,
-    range: 'Audit!A:G',
+    range: 'Audit!A:I',
     valueInputOption: 'RAW',
     requestBody: { values: [[
       entry.timestamp,
@@ -518,6 +520,8 @@ async function appendAudit(sheets, entry) {
       entry.recordsCount,
       entry.result,
       entry.message,
+      entry.deviceId,
+      entry.appVersion,
     ]] },
   });
 }
@@ -595,7 +599,7 @@ module.exports = async (req, res) => {
     res.setHeader('Vary', 'Origin');
   }
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Authorization, Content-Type');
+  res.setHeader('Access-Control-Allow-Headers', 'Authorization, Content-Type, X-Device-Id, X-App-Version');
 
   if (req.method === 'OPTIONS') {
     return res.status(200).end();
@@ -621,6 +625,9 @@ module.exports = async (req, res) => {
       message: 'Não autorizado',
     });
   }
+
+  const deviceId = req.headers['x-device-id'] || '';
+  const appVersion = req.headers['x-app-version'] || '';
 
   try {
     const sheets = await getSheetsAPI();
@@ -817,6 +824,8 @@ module.exports = async (req, res) => {
             recordsCount: records.length,
             result: 'success',
             message: 'overwrite',
+            deviceId,
+            appVersion,
           });
         } catch (error) {
           console.error('Erro ao registrar auditoria:', error);
@@ -866,6 +875,8 @@ module.exports = async (req, res) => {
             recordsCount: counts.records,
             result: 'success',
             message: 'append',
+            deviceId,
+            appVersion,
           });
         } catch (error) {
           console.error('Erro ao registrar auditoria:', error);
@@ -910,6 +921,8 @@ module.exports = async (req, res) => {
             recordsCount: counts.records,
             result: 'success',
             message: 'append',
+            deviceId,
+            appVersion,
           });
         } catch (error) {
           console.error('Erro ao registrar auditoria:', error);
