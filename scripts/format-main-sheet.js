@@ -27,9 +27,11 @@ const MAX_COL_WIDTH = 220;
 const CHAR_PX = 8;
 const PADDING_PX = 24;
 
-const REGISTROS_HEADER = 'childName';
-const REGISTROS_FORMULA =
-  '=ARRAYFORMULA(SE(B2:B="";"";SEERRO(PROCV(B2:B;Criancas!A:C;3;FALSO);"")))';
+const REGISTROS_HEADERS = ['childName', 'childPublicId'];
+const REGISTROS_FORMULAS = [
+  '=ARRAYFORMULA(SE(B2:B="";"";SEERRO(PROCV(B2:B;Criancas!A:C;3;FALSO);"")))',
+  '=ARRAYFORMULA(SE(B2:B="";"";SEERRO(PROCV(B2:B;Criancas!A:B;2;FALSO);"")))',
+];
 
 async function getSheetsAPI() {
   const auth = new google.auth.GoogleAuth({
@@ -56,13 +58,10 @@ function widthForHeader(header) {
 async function ensureRegistrosIdentifier(sheets, targetSpreadsheetId) {
   await sheets.spreadsheets.values.update({
     spreadsheetId: targetSpreadsheetId,
-    range: 'Registros!M1:M2',
+    range: 'Registros!M1:N2',
     valueInputOption: 'USER_ENTERED',
     requestBody: {
-      values: [
-        [REGISTROS_HEADER],
-        [REGISTROS_FORMULA],
-      ],
+      values: [REGISTROS_HEADERS, REGISTROS_FORMULAS],
     },
   });
 }
