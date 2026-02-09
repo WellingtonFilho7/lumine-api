@@ -2,7 +2,7 @@
   "version": 2,
   "builds": [
     {
-      "src": "api/sync.js",
+      "src": "api/**/*.js",
       "use": "@vercel/node"
     }
   ],
@@ -10,6 +10,18 @@
     {
       "src": "/api/sync",
       "dest": "/api/sync.js"
+    },
+    {
+      "src": "/api/intake/pre-cadastro",
+      "dest": "/api/intake/pre-cadastro.js"
+    },
+    {
+      "src": "/api/intake/triagem",
+      "dest": "/api/intake/triagem.js"
+    },
+    {
+      "src": "/api/intake/matricula",
+      "dest": "/api/intake/matricula.js"
     }
   ]
 }

@@ -1,8 +1,14 @@
 {
   "name": "lumine-api",
-  "version": "1.0.0",
-  "description": "API de sincronização do Instituto Lumine com Google Sheets",
+  "version": "1.1.0",
+  "description": "API de sincronizacao e intake do Instituto Lumine",
+  "scripts": {
+    "import:csv": "node scripts/import-csv-to-supabase.js"
+  },
   "dependencies": {
-    "googleapis": "^128.0.0"
+    "@supabase/supabase-js": "^2.53.0",
+    "csv-parse": "^5.5.6",
+    "googleapis": "^128.0.0",
+    "zod": "^3.23.8"
   }
 }
