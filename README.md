@@ -1,53 +1,57 @@
 # Lumine API
 
-API do Instituto Lumine com duas trilhas:
+API do Instituto Lumine com persistencia principal em Supabase Postgres.
 
-1. `sync` (legado) para operacao atual com Google Sheets.
-2. `intake` (novo) para pre-cadastro, triagem e matricula em Supabase Postgres.
+Trilhas ativas:
+1. `sync` para operacao atual do webapp (children/records) em Supabase.
+2. `intake` para pre-cadastro, triagem e matricula em Supabase.
 
 ## Endpoints
 
-### Legado (Sheets)
+### Operacional (Supabase)
 - `GET /api/sync`
 - `POST /api/sync` (`sync`, `addChild`, `addRecord`)
 
-### Novo intake (Supabase)
+### Intake (Supabase)
 - `POST /api/intake/pre-cadastro`
 - `POST /api/intake/triagem`
 - `POST /api/intake/matricula`
 
 ## Variaveis de ambiente
 
-### Obrigatorias (trilha atual)
+### Obrigatorias (todas as trilhas)
 - `API_TOKEN`
 - `ORIGINS_ALLOWLIST`
-- `SPREADSHEET_ID`
-- `GOOGLE_CREDENTIALS`
-
-### Obrigatorias (nova trilha Supabase)
 - `SUPABASE_URL`
 - `SUPABASE_SERVICE_ROLE_KEY`
 
-### Opcionais (nova trilha)
+### Opcionais (Supabase)
 - `SUPABASE_ENFORCE_RBAC` (`true|false`) default: `false`
 - `RATE_LIMIT_WINDOW_MS` default: `60000`
 - `RATE_LIMIT_MAX` default: `30`
+- `DISABLE_SYNC_ENDPOINT` (`true|false`) default: `false`
+
+### Opcionais (espelho em Sheets, transitorio)
 - `SHEETS_MIRROR_ENABLED` (`true|false`) default: `false`
+- `SPREADSHEET_ID`
+- `GOOGLE_CREDENTIALS`
 - `MIRROR_SHEET_TITLE` default: `Mirror_Intake`
 
 ## Seguranca
 
 - Browser nunca grava diretamente no banco.
 - API valida token Bearer (`API_TOKEN`).
-- Rotas intake possuem validação server-side com Zod.
+- Rotas intake possuem validacao server-side com Zod.
+- `sync` possui validacao server-side e controle de concorrencia por `DATA_REV`.
 - Honeypot (`website`) no pre-cadastro.
 - Rate limit por IP em memoria (janela curta).
 - Logs de erro sem PII.
 
-## SQL / Migração
+## SQL / Migracao
 
-Migration inicial:
+Migrations:
 - `db/migrations/0001_supabase_intake.sql`
+- `db/migrations/0002_supabase_sync_store.sql`
 
 Importacao de dados CSV (idempotente):
 
