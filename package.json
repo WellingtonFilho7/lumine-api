@@ -3,7 +3,8 @@
   "version": "1.1.0",
   "description": "API de sincronizacao e intake do Instituto Lumine",
   "scripts": {
-    "import:csv": "node scripts/import-csv-to-supabase.js"
+    "import:csv": "node scripts/import-csv-to-supabase.js",
+    "backfill:hardening": "node scripts/backfill-enrollment-hardening.js --dry-run"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.53.0",

@@ -6,8 +6,14 @@
 2. Executar SQL das migrations, nesta ordem:
    - `db/migrations/0001_supabase_intake.sql`
    - `db/migrations/0002_supabase_sync_store.sql`
-3. (Opcional por enquanto) Criar usuarios internos em `auth.users`.
-4. (Opcional por enquanto) Criar perfis em `perfis_internos` com papel:
+   - `db/migrations/0003_enrollment_hardening_expand.sql`
+3. Rodar verificacao de colunas (arquivo: `db/migrations/0003_verify_columns.sql`).
+4. Rodar backfill em dry-run:
+   - `npm run backfill:hardening`
+5. Se o dry-run estiver limpo, aplicar backfill:
+   - `node scripts/backfill-enrollment-hardening.js --apply`
+6. (Opcional por enquanto) Criar usuarios internos em `auth.users`.
+7. (Opcional por enquanto) Criar perfis em `perfis_internos` com papel:
    - `admin`, `triagem`, `secretaria`.
 
 ## 2. Configurar Vercel (lumine-api)
@@ -23,6 +29,8 @@ Recomendadas:
 - `DISABLE_SYNC_ENDPOINT=false`
 - `RATE_LIMIT_WINDOW_MS=60000`
 - `RATE_LIMIT_MAX=30`
+- `ENROLLMENT_STRICT_MODE=false`
+- `ENROLLMENT_ACCEPT_LEGACY_FIELDS=true`
 
 Somente se usar espelho em Sheets no intake:
 - `SHEETS_MIRROR_ENABLED=true`
@@ -45,17 +53,24 @@ curl -i "$API_URL/api/sync" -H "Authorization: Bearer $API_TOKEN"
    - `POST /api/intake/triagem`
    - `POST /api/intake/matricula`
 
-## 4. Cutover definitivo (sem Sheets como banco)
+## 4. Janela de compatibilidade
+
+1. Manter `ENROLLMENT_STRICT_MODE=false` e `ENROLLMENT_ACCEPT_LEGACY_FIELDS=true` ate todo frontend novo estar em producao.
+2. Monitorar erros de validacao por no minimo 14 dias.
+3. Somente apos estabilizacao, considerar cutover estrito.
+
+## 5. Cutover definitivo (sem Sheets como banco)
 
 1. Confirmar `SHEETS_MIRROR_ENABLED=false`.
 2. Remover/ignorar variaveis de Sheets se nao forem mais usadas.
 3. Manter operacao principal no Supabase (`/api/sync` e `/api/intake/*`).
 
-## 5. Rollback rapido
+## 6. Rollback rapido
 
 Se houver incidente:
 
 1. Reverter deploy no Vercel para o build anterior.
-2. Manter `DISABLE_SYNC_ENDPOINT=false` na versao estavel.
-3. Inspecionar `audit_logs` e logs do Vercel.
-4. Corrigir e redeploy.
+2. Definir `ENROLLMENT_STRICT_MODE=false` e `ENROLLMENT_ACCEPT_LEGACY_FIELDS=true`.
+3. Manter `DISABLE_SYNC_ENDPOINT=false` na versao estavel.
+4. Inspecionar `audit_logs` e logs do Vercel.
+5. Corrigir e redeploy.
