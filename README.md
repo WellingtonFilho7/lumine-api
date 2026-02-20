@@ -29,9 +29,9 @@ Trilhas ativas:
 - `SUPABASE_ENFORCE_RBAC` (`true|false`) default: `false`
 - `RATE_LIMIT_WINDOW_MS` default: `60000`
 - `RATE_LIMIT_MAX` default: `30`
-- `UPSTASH_REDIS_REST_URL` (opcional, recomendado para rate limit distribuido)
-- `UPSTASH_REDIS_REST_TOKEN` (opcional, recomendado para rate limit distribuido)
 - `RATE_LIMIT_NAMESPACE` default: `lumine:rate`
+- `RATE_LIMIT_USE_SUPABASE` (`true|false`) default: `true`
+- `RATE_LIMIT_CLEANUP_PROBABILITY` default: `0.02`
 - `DISABLE_SYNC_ENDPOINT` (`true|false`) default: `false`
 - `ENROLLMENT_STRICT_MODE` (`true|false`) default: `false`
 - `ENROLLMENT_ACCEPT_LEGACY_FIELDS` (`true|false`) default: `true`
@@ -49,7 +49,7 @@ Trilhas ativas:
 - Rotas intake possuem validacao server-side com Zod.
 - `sync` possui validacao server-side e controle de concorrencia por `DATA_REV`.
 - Honeypot (`website`) no pre-cadastro.
-- Rate limit por IP: distribuido via Upstash (quando configurado) com fallback em memoria.
+- Rate limit por IP: distribuido via Supabase (quando habilitado) com fallback em memoria.
 - Logs de erro sem PII.
 
 ## SQL / Migracao
@@ -58,6 +58,7 @@ Migrations:
 - `db/migrations/0001_supabase_intake.sql`
 - `db/migrations/0002_supabase_sync_store.sql`
 - `db/migrations/0003_enrollment_hardening_expand.sql`
+- `db/migrations/0005_supabase_rate_limit.sql`
 
 Verificacao manual (pos-migration):
 - `db/migrations/0003_verify_columns.sql`

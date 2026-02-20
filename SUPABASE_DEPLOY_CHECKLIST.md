@@ -7,6 +7,7 @@
    - `db/migrations/0001_supabase_intake.sql`
    - `db/migrations/0002_supabase_sync_store.sql`
    - `db/migrations/0003_enrollment_hardening_expand.sql`
+  - `db/migrations/0005_supabase_rate_limit.sql`
 3. Rodar verificacao de colunas (arquivo: `db/migrations/0003_verify_columns.sql`).
 4. Rodar backfill em dry-run:
    - `npm run backfill:hardening`
@@ -29,6 +30,8 @@ Recomendadas:
 - `DISABLE_SYNC_ENDPOINT=false`
 - `RATE_LIMIT_WINDOW_MS=60000`
 - `RATE_LIMIT_MAX=30`
+- `RATE_LIMIT_USE_SUPABASE=true`
+- `RATE_LIMIT_NAMESPACE=lumine:rate`
 - `ENROLLMENT_STRICT_MODE=false`
 - `ENROLLMENT_ACCEPT_LEGACY_FIELDS=true`
 
