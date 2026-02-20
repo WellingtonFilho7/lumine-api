@@ -5,6 +5,7 @@ const {
   loadOperationalData,
   overwriteOperationalData,
 } = require('../lib/sync-supabase-service');
+const { ensureRateLimit } = require('../lib/security');
 
 const API_TOKEN = process.env.API_TOKEN;
 const ORIGINS_ALLOWLIST = (process.env.ORIGINS_ALLOWLIST || 'https://lumine-webapp.vercel.app')
@@ -122,6 +123,12 @@ module.exports = async (req, res) => {
   }
 
   if (!ensureApiToken(req, res)) return;
+
+  const actionKey =
+    req.method === 'GET'
+      ? 'sync_get'
+      : `sync_${(req.body && req.body.action) || 'post'}`;
+  if (!(await ensureRateLimit(req, res, actionKey))) return;
 
   const deviceId = req.headers['x-device-id'] || '';
   const appVersion = req.headers['x-app-version'] || '';

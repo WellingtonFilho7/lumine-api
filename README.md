@@ -29,6 +29,9 @@ Trilhas ativas:
 - `SUPABASE_ENFORCE_RBAC` (`true|false`) default: `false`
 - `RATE_LIMIT_WINDOW_MS` default: `60000`
 - `RATE_LIMIT_MAX` default: `30`
+- `UPSTASH_REDIS_REST_URL` (opcional, recomendado para rate limit distribuido)
+- `UPSTASH_REDIS_REST_TOKEN` (opcional, recomendado para rate limit distribuido)
+- `RATE_LIMIT_NAMESPACE` default: `lumine:rate`
 - `DISABLE_SYNC_ENDPOINT` (`true|false`) default: `false`
 - `ENROLLMENT_STRICT_MODE` (`true|false`) default: `false`
 - `ENROLLMENT_ACCEPT_LEGACY_FIELDS` (`true|false`) default: `true`
@@ -46,7 +49,7 @@ Trilhas ativas:
 - Rotas intake possuem validacao server-side com Zod.
 - `sync` possui validacao server-side e controle de concorrencia por `DATA_REV`.
 - Honeypot (`website`) no pre-cadastro.
-- Rate limit por IP em memoria (janela curta).
+- Rate limit por IP: distribuido via Upstash (quando configurado) com fallback em memoria.
 - Logs de erro sem PII.
 
 ## SQL / Migracao
