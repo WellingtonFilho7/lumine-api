@@ -2,6 +2,7 @@ const { resolveActor } = require('../lib/actor');
 const {
   addChild,
   addRecord,
+  deleteChild,
   loadOperationalData,
   overwriteOperationalData,
 } = require('../lib/sync-supabase-service');
@@ -71,6 +72,18 @@ function ensureApiToken(req, res) {
 
 function sendHandledError(res, error) {
   if (error?.statusCode && error?.code) {
+    if (error.statusCode >= 500) {
+      console.error('[sync] erro interno', {
+        message: error?.message,
+        code: error?.code,
+      });
+      return res.status(500).json({
+        success: false,
+        error: error.code,
+        message: 'Erro interno',
+      });
+    }
+
     if (error.code === 'REVISION_MISMATCH') {
       return res.status(409).json({
         success: false,
@@ -202,6 +215,18 @@ module.exports = async (req, res) => {
         message: 'Registro adicionado',
         dataRev: result.dataRev,
         record: result.record,
+      });
+    }
+
+    if (action === 'deleteChild') {
+      const childId = data?.childId || data?.id;
+      const result = await deleteChild(childId, actor, deviceId, appVersion);
+      return res.status(200).json({
+        success: true,
+        message: 'Cadastro removido',
+        dataRev: result.dataRev,
+        deletedRecords: result.deletedRecords,
+        changed: result.changed,
       });
     }
 

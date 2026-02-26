@@ -10,7 +10,7 @@ Trilhas ativas:
 
 ### Operacional (Supabase)
 - `GET /api/sync`
-- `POST /api/sync` (`sync`, `addChild`, `addRecord`)
+- `POST /api/sync` (`sync`, `addChild`, `addRecord`, `deleteChild`)
 
 ### Intake (Supabase)
 - `POST /api/intake/pre-cadastro`
@@ -50,6 +50,7 @@ Trilhas ativas:
 - `sync` possui validacao server-side e controle de concorrencia por `DATA_REV`.
 - Honeypot (`website`) no pre-cadastro.
 - Rate limit por IP: distribuido via Supabase (quando habilitado) com fallback em memoria.
+- Em serverless, o fallback em memoria vale por instancia; para limite global usar Redis/Upstash.
 - Logs de erro sem PII.
 
 ## SQL / Migracao
