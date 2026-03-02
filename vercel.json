@@ -8,6 +8,26 @@
   ],
   "routes": [
     {
+      "src": "/api/bootstrap",
+      "dest": "/api/bootstrap.js"
+    },
+    {
+      "src": "/api/children/create",
+      "dest": "/api/children/create.js"
+    },
+    {
+      "src": "/api/children/update",
+      "dest": "/api/children/update.js"
+    },
+    {
+      "src": "/api/children/delete",
+      "dest": "/api/children/delete.js"
+    },
+    {
+      "src": "/api/records/upsert",
+      "dest": "/api/records/upsert.js"
+    },
+    {
       "src": "/api/sync",
       "dest": "/api/sync.js"
     },

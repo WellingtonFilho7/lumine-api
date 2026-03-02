@@ -6,141 +6,19 @@ const {
   loadOperationalData,
   overwriteOperationalData,
 } = require('../lib/sync-supabase-service');
-const { ensureRateLimit } = require('../lib/security');
+const { ensureCors, ensureRateLimit, setCors } = require('../lib/security');
+const { sendHandledError } = require('../lib/http-errors');
 
-const API_TOKEN = process.env.API_TOKEN;
-const ORIGINS_ALLOWLIST = (process.env.ORIGINS_ALLOWLIST || 'https://lumine-webapp.vercel.app')
-  .split(',')
-  .map(origin => origin.trim())
-  .filter(Boolean);
 const MAX_SYNC_BYTES = 4 * 1024 * 1024;
-const DISABLE_SYNC_ENDPOINT = process.env.DISABLE_SYNC_ENDPOINT === 'true';
-
-function getAllowedOrigin(origin) {
-  if (!origin) return '';
-  return ORIGINS_ALLOWLIST.includes(origin) ? origin : '';
-}
-
-function setCors(req, res) {
-  const origin = req.headers.origin;
-  const allowedOrigin = getAllowedOrigin(origin);
-
-  if (allowedOrigin) {
-    res.setHeader('Access-Control-Allow-Origin', allowedOrigin);
-    res.setHeader('Vary', 'Origin');
-  }
-
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-  res.setHeader(
-    'Access-Control-Allow-Headers',
-    'Authorization, Content-Type, X-Device-Id, X-App-Version, X-User-Jwt'
-  );
-
-  return { origin, allowedOrigin };
-}
-
-function ensureCors(req, res, origin, allowedOrigin) {
-  if (req.method === 'OPTIONS') {
-    res.status(200).end();
-    return false;
-  }
-
-  if (origin && !allowedOrigin) {
-    res.status(403).json({
-      success: false,
-      error: 'FORBIDDEN_ORIGIN',
-      message: 'Origem nao permitida',
-    });
-    return false;
-  }
-
-  return true;
-}
-
-function ensureApiToken(req, res) {
-  const authHeader = req.headers.authorization || '';
-  if (!API_TOKEN || authHeader !== `Bearer ${API_TOKEN}`) {
-    res.status(401).json({
-      success: false,
-      error: 'UNAUTHORIZED',
-      message: 'Nao autorizado',
-    });
-    return false;
-  }
-  return true;
-}
-
-function sendHandledError(res, error) {
-  if (error?.statusCode && error?.code) {
-    if (error.statusCode >= 500) {
-      console.error('[sync] erro interno', {
-        message: error?.message,
-        code: error?.code,
-      });
-      return res.status(500).json({
-        success: false,
-        error: error.code,
-        message: 'Erro interno',
-      });
-    }
-
-    if (error.code === 'REVISION_MISMATCH') {
-      return res.status(409).json({
-        success: false,
-        error: error.code,
-        serverRev: error.meta?.serverRev,
-        clientRev: error.meta?.clientRev,
-        message: error.message,
-      });
-    }
-
-    if (error.code === 'DATA_LOSS_PREVENTED') {
-      return res.status(409).json({
-        success: false,
-        error: error.code,
-        serverCount: error.meta?.serverCount,
-        clientCount: error.meta?.clientCount,
-        message: error.message,
-      });
-    }
-
-    return res.status(error.statusCode).json({
-      success: false,
-      error: error.code,
-      message: error.message,
-    });
-  }
-
-  console.error('[sync] erro interno', {
-    message: error?.message,
-    code: error?.code,
-  });
-
-  return res.status(500).json({
-    success: false,
-    error: 'INTERNAL_ERROR',
-    message: 'Erro interno',
-  });
-}
+const DISABLE_SYNC_OVERWRITE =
+  (process.env.DISABLE_SYNC_ENDPOINT || 'true').toLowerCase() !== 'false';
 
 module.exports = async (req, res) => {
-  const { origin, allowedOrigin } = setCors(req, res);
+  const { origin, allowedOrigin } = setCors(req, res, { methods: 'GET, POST, OPTIONS' });
   if (!ensureCors(req, res, origin, allowedOrigin)) return;
 
-  if (DISABLE_SYNC_ENDPOINT) {
-    return res.status(503).json({
-      success: false,
-      error: 'SYNC_DISABLED',
-      message: 'Endpoint de sincronizacao desativado',
-    });
-  }
-
-  if (!ensureApiToken(req, res)) return;
-
   const actionKey =
-    req.method === 'GET'
-      ? 'sync_get'
-      : `sync_${(req.body && req.body.action) || 'post'}`;
+    req.method === 'GET' ? 'sync_get' : `sync_${(req.body && req.body.action) || 'post'}`;
   if (!(await ensureRateLimit(req, res, actionKey))) return;
 
   const deviceId = req.headers['x-device-id'] || '';
@@ -173,6 +51,14 @@ module.exports = async (req, res) => {
     const { action, data, ifMatchRev } = req.body || {};
 
     if (action === 'sync') {
+      if (DISABLE_SYNC_OVERWRITE) {
+        return res.status(503).json({
+          success: false,
+          error: 'SYNC_DISABLED',
+          message: 'Sincronizacao por overwrite desativada para operacao diaria',
+        });
+      }
+
       const bodySize = Buffer.byteLength(JSON.stringify(req.body || {}));
       if (bodySize > MAX_SYNC_BYTES) {
         return res.status(413).json({
@@ -236,6 +122,26 @@ module.exports = async (req, res) => {
       message: 'Acao nao reconhecida',
     });
   } catch (error) {
-    return sendHandledError(res, error);
+    if (error?.code === 'REVISION_MISMATCH') {
+      return res.status(409).json({
+        success: false,
+        error: error.code,
+        serverRev: error.meta?.serverRev,
+        clientRev: error.meta?.clientRev,
+        message: error.message,
+      });
+    }
+
+    if (error?.code === 'DATA_LOSS_PREVENTED') {
+      return res.status(409).json({
+        success: false,
+        error: error.code,
+        serverCount: error.meta?.serverCount,
+        clientCount: error.meta?.clientCount,
+        message: error.message,
+      });
+    }
+
+    return sendHandledError(res, 'sync', error);
   }
 };
