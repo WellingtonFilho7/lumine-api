@@ -17,6 +17,9 @@ module.exports = async (req, res) => {
 
   if (!(await ensureRateLimit(req, res, 'bootstrap_get'))) return;
 
+  res.setHeader('Cache-Control', 'no-store, max-age=0');
+  res.setHeader('Pragma', 'no-cache');
+
   try {
     await resolveActor(req, []);
     const payload = await loadOperationalData();
