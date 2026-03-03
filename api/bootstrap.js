@@ -3,6 +3,37 @@ const { loadOperationalData } = require('../lib/sync-supabase-service');
 const { sendHandledError } = require('../lib/http-errors');
 const { ensureCors, ensureRateLimit, setCors } = require('../lib/security');
 
+function shouldRetryBootstrapLoad(error) {
+  const text = String(error?.message || '').toLowerCase();
+  return (
+    text.includes('fetch failed') ||
+    text.includes('network') ||
+    text.includes('socket') ||
+    text.includes('timeout') ||
+    text.includes('temporar')
+  );
+}
+
+async function loadOperationalDataWithRetry(maxRetries = 1) {
+  let attempt = 0;
+  let lastError = null;
+
+  while (attempt <= maxRetries) {
+    try {
+      return await loadOperationalData();
+    } catch (error) {
+      lastError = error;
+      if (!shouldRetryBootstrapLoad(error) || attempt === maxRetries) {
+        throw error;
+      }
+      await new Promise(resolve => setTimeout(resolve, 120));
+      attempt += 1;
+    }
+  }
+
+  throw lastError;
+}
+
 module.exports = async (req, res) => {
   const { origin, allowedOrigin } = setCors(req, res, { methods: 'GET, OPTIONS' });
   if (!ensureCors(req, res, origin, allowedOrigin)) return;
@@ -22,7 +53,7 @@ module.exports = async (req, res) => {
 
   try {
     await resolveActor(req, []);
-    const payload = await loadOperationalData();
+    const payload = await loadOperationalDataWithRetry(1);
 
     return res.status(200).json({
       success: true,
