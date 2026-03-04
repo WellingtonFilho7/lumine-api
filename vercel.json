@@ -12,6 +12,14 @@
       "dest": "/api/bootstrap.js"
     },
     {
+      "src": "/api/admin/internal-users/pending",
+      "dest": "/api/admin/internal-users/pending.js"
+    },
+    {
+      "src": "/api/admin/internal-users/approve",
+      "dest": "/api/admin/internal-users/approve.js"
+    },
+    {
       "src": "/api/children/create",
       "dest": "/api/children/create.js"
     },
