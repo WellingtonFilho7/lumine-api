@@ -36,6 +36,22 @@
       "dest": "/api/records/upsert.js"
     },
     {
+      "src": "/api/finance/create",
+      "dest": "/api/finance/create.js"
+    },
+    {
+      "src": "/api/finance/list",
+      "dest": "/api/finance/list.js"
+    },
+    {
+      "src": "/api/finance/upload-url",
+      "dest": "/api/finance/upload-url.js"
+    },
+    {
+      "src": "/api/finance/file-url",
+      "dest": "/api/finance/file-url.js"
+    },
+    {
       "src": "/api/sync",
       "dest": "/api/sync.js"
     },
