@@ -37,19 +37,19 @@
     },
     {
       "src": "/api/finance/create",
-      "dest": "/api/finance/create.js"
+      "dest": "/api/finance/[action].js?action=create"
     },
     {
       "src": "/api/finance/list",
-      "dest": "/api/finance/list.js"
+      "dest": "/api/finance/[action].js?action=list"
     },
     {
       "src": "/api/finance/upload-url",
-      "dest": "/api/finance/upload-url.js"
+      "dest": "/api/finance/[action].js?action=upload-url"
     },
     {
       "src": "/api/finance/file-url",
-      "dest": "/api/finance/file-url.js"
+      "dest": "/api/finance/[action].js?action=file-url"
     },
     {
       "src": "/api/sync",
