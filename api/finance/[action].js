@@ -14,12 +14,43 @@ const {
   listFinanceTransactions,
 } = require('../../lib/finance-service');
 
+function safeParseJsonString(value) {
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+
+  try {
+    const parsed = JSON.parse(trimmed);
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return null;
+    return parsed;
+  } catch (_error) {
+    return null;
+  }
+}
+
+function normalizeBodyPayload(rawBody) {
+  const bodyCandidate = typeof rawBody === 'string'
+    ? safeParseJsonString(rawBody)
+    : rawBody;
+
+  if (!bodyCandidate || typeof bodyCandidate !== 'object' || Array.isArray(bodyCandidate)) {
+    return {};
+  }
+
+  const nestedData = bodyCandidate.data;
+  if (nestedData && typeof nestedData === 'object' && !Array.isArray(nestedData)) {
+    return nestedData;
+  }
+
+  return bodyCandidate;
+}
+
 const ROUTES = {
   create: {
     method: 'POST',
     rateLimitKey: 'finance_create',
     run: async (req, actor) => {
-      const payload = parseFinanceCreatePayload(req.body?.data || req.body || {});
+      const payload = parseFinanceCreatePayload(normalizeBodyPayload(req.body));
       const result = await createFinanceTransaction(payload, actor);
       return {
         transaction: result.transaction,
@@ -44,7 +75,7 @@ const ROUTES = {
     method: 'POST',
     rateLimitKey: 'finance_upload_url',
     run: async (req, actor) => {
-      const payload = parseFinanceUploadUrlPayload(req.body?.data || req.body || {});
+      const payload = parseFinanceUploadUrlPayload(normalizeBodyPayload(req.body));
       return generateFinanceUploadUrl(payload, actor);
     },
   },
@@ -52,7 +83,7 @@ const ROUTES = {
     method: 'POST',
     rateLimitKey: 'finance_file_url',
     run: async (req, actor) => {
-      const payload = parseFinanceFileUrlPayload(req.body?.data || req.body || {});
+      const payload = parseFinanceFileUrlPayload(normalizeBodyPayload(req.body));
       return createFinanceFileUrl(payload, actor);
     },
   },
@@ -95,4 +126,10 @@ module.exports = async (req, res) => {
   } catch (error) {
     return sendHandledError(res, `finance/${action}`, error);
   }
+};
+
+module.exports.__private = {
+  extractAction,
+  normalizeBodyPayload,
+  safeParseJsonString,
 };
