@@ -16,7 +16,8 @@ Variaveis obrigatorias no shell:
 - `SUPABASE_URL`
 - `SUPABASE_SERVICE_ROLE_KEY`
 - `SPREADSHEET_ID`
-- `GOOGLE_CREDENTIALS` (JSON da service account)
+- `GOOGLE_CREDENTIALS` (JSON da service account) **ou**
+- `GOOGLE_CREDENTIALS_FILE` (caminho para o arquivo JSON da service account)
 
 Variaveis opcionais:
 
@@ -42,6 +43,7 @@ O script mapeia automaticamente aliases comuns para:
 Dry-run:
 
 ```bash
+export GOOGLE_CREDENTIALS_FILE="/caminho/service-account.json"
 npm run export:finance:gastos
 ```
 

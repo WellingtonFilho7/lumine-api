@@ -7,6 +7,7 @@ const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const SPREADSHEET_ID = process.env.SPREADSHEET_ID;
 const GOOGLE_CREDENTIALS_RAW = process.env.GOOGLE_CREDENTIALS || '';
+const GOOGLE_CREDENTIALS_FILE = process.env.GOOGLE_CREDENTIALS_FILE || '';
 const LEGACY_GASTOS_SHEET_TITLE = process.env.LEGACY_GASTOS_SHEET_TITLE || 'gastos';
 const LEGACY_GASTOS_RANGE = process.env.LEGACY_GASTOS_RANGE || `${LEGACY_GASTOS_SHEET_TITLE}!A:ZZ`;
 const FINANCE_EXPORT_PAGE_SIZE = Number(process.env.FINANCE_EXPORT_PAGE_SIZE || 1000);
@@ -25,15 +26,26 @@ if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
   fail('Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY');
 }
 
-if (!SPREADSHEET_ID || !GOOGLE_CREDENTIALS_RAW) {
-  fail('Missing SPREADSHEET_ID or GOOGLE_CREDENTIALS');
+if (!SPREADSHEET_ID || (!GOOGLE_CREDENTIALS_RAW && !GOOGLE_CREDENTIALS_FILE)) {
+  fail('Missing SPREADSHEET_ID and GOOGLE credentials. Use GOOGLE_CREDENTIALS or GOOGLE_CREDENTIALS_FILE.');
 }
 
 let GOOGLE_CREDENTIALS = {};
 try {
-  GOOGLE_CREDENTIALS = JSON.parse(GOOGLE_CREDENTIALS_RAW);
+  if (GOOGLE_CREDENTIALS_FILE) {
+    const fs = require('fs');
+    GOOGLE_CREDENTIALS = JSON.parse(fs.readFileSync(GOOGLE_CREDENTIALS_FILE, 'utf8'));
+  } else {
+    GOOGLE_CREDENTIALS = JSON.parse(GOOGLE_CREDENTIALS_RAW);
+  }
 } catch (_error) {
-  fail('GOOGLE_CREDENTIALS invalid JSON');
+  fail('Google credentials invalid JSON. Check GOOGLE_CREDENTIALS_FILE or GOOGLE_CREDENTIALS.');
+}
+
+if (!GOOGLE_CREDENTIALS.client_email || !GOOGLE_CREDENTIALS.private_key) {
+  fail(
+    'Google credentials must be Service Account JSON (missing client_email/private_key).'
+  );
 }
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
