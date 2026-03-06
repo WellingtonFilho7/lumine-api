@@ -5,7 +5,8 @@
   "scripts": {
     "import:csv": "node scripts/import-csv-to-supabase.js",
     "backfill:hardening": "node scripts/backfill-enrollment-hardening.js --dry-run",
-    "import:finance:gastos": "node scripts/import-gastos-sheet-to-finance.js"
+    "import:finance:gastos": "node scripts/import-gastos-sheet-to-finance.js",
+    "export:finance:gastos": "node scripts/export-finance-to-gastos-sheet.js"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.53.0",
