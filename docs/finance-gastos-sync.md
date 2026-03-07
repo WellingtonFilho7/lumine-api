@@ -71,6 +71,23 @@ Aplicar backfill:
 npm run backfill:finance:gastos -- --apply
 ```
 
+## Prune de linhas órfãs na aba gastos
+
+Remove da aba `gastos` as linhas com `transaction_id` que nao existem mais no
+Supabase.
+
+Dry-run do prune:
+
+```bash
+npm run prune:finance:gastos
+```
+
+Aplicar prune:
+
+```bash
+npm run prune:finance:gastos -- --apply
+```
+
 ## Comando unico seguro (export + backfill)
 
 Para rodar o ciclo completo em sequencia, com log em arquivo:
@@ -85,6 +102,20 @@ Aplicar:
 
 ```bash
 npm run sync:finance:gastos -- --apply
+```
+
+Para executar o fluxo completo incluindo prune:
+
+Dry-run:
+
+```bash
+npm run sync:finance:gastos -- --prune
+```
+
+Aplicar:
+
+```bash
+npm run sync:finance:gastos -- --apply --prune
 ```
 
 Logs sao gravados em:

@@ -18,3 +18,11 @@ test('buildSteps em apply executa export e backfill com --apply', () => {
   assert.deepEqual(steps[0].args, ['scripts/export-finance-to-gastos-sheet.js', '--apply']);
   assert.deepEqual(steps[1].args, ['scripts/backfill-finance-gastos-sheet.js', '--apply']);
 });
+
+test('buildSteps com prune inclui etapa de limpeza ao final', () => {
+  const steps = buildSteps({ apply: true, prune: true });
+  assert.equal(steps.length, 3);
+  assert.deepEqual(steps[0].args, ['scripts/export-finance-to-gastos-sheet.js', '--apply']);
+  assert.deepEqual(steps[1].args, ['scripts/backfill-finance-gastos-sheet.js', '--apply']);
+  assert.deepEqual(steps[2].args, ['scripts/prune-finance-gastos-sheet.js', '--apply']);
+});

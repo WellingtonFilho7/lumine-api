@@ -1,6 +1,6 @@
-function buildSteps({ apply }) {
+function buildSteps({ apply, prune }) {
   const maybeApply = apply ? ['--apply'] : [];
-  return [
+  const steps = [
     {
       name: 'export',
       args: ['scripts/export-finance-to-gastos-sheet.js', ...maybeApply],
@@ -10,6 +10,15 @@ function buildSteps({ apply }) {
       args: ['scripts/backfill-finance-gastos-sheet.js', ...maybeApply],
     },
   ];
+
+  if (prune) {
+    steps.push({
+      name: 'prune',
+      args: ['scripts/prune-finance-gastos-sheet.js', ...maybeApply],
+    });
+  }
+
+  return steps;
 }
 
 module.exports = {

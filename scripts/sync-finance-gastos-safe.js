@@ -6,6 +6,7 @@ const { spawnSync } = require('child_process');
 const { buildSteps } = require('./lib/finance-gastos-sync-runner');
 
 const APPLY = process.argv.includes('--apply');
+const PRUNE = process.argv.includes('--prune');
 
 function fail(message, code = 1) {
   console.error(message);
@@ -42,10 +43,10 @@ function run() {
     stream.write(`${line}\n`);
   };
 
-  write(`=== Finance sync start (${APPLY ? 'apply' : 'dry-run'}) ===`);
+  write(`=== Finance sync start (${APPLY ? 'apply' : 'dry-run'}${PRUNE ? ', prune' : ''}) ===`);
   write(`Log file: ${logPath}`);
 
-  const steps = buildSteps({ apply: APPLY });
+  const steps = buildSteps({ apply: APPLY, prune: PRUNE });
   for (const step of steps) {
     write(`\n--- step: ${step.name} ---`);
     write(`cmd: node ${step.args.join(' ')}`);
@@ -70,7 +71,7 @@ function run() {
     }
   }
 
-  write(`\n=== Finance sync done (${APPLY ? 'apply' : 'dry-run'}) ===`);
+  write(`\n=== Finance sync done (${APPLY ? 'apply' : 'dry-run'}${PRUNE ? ', prune' : ''}) ===`);
   stream.end();
 }
 
