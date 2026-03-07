@@ -71,6 +71,27 @@ Aplicar backfill:
 npm run backfill:finance:gastos -- --apply
 ```
 
+## Comando unico seguro (export + backfill)
+
+Para rodar o ciclo completo em sequencia, com log em arquivo:
+
+Dry-run:
+
+```bash
+npm run sync:finance:gastos
+```
+
+Aplicar:
+
+```bash
+npm run sync:finance:gastos -- --apply
+```
+
+Logs sao gravados em:
+
+- `logs/finance-sync/<timestamp>_dry-run.log`
+- `logs/finance-sync/<timestamp>_apply.log`
+
 ## Operacao recomendada
 
 1. Rodar dry-run e validar `rowsToAppend`.

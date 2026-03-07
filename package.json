@@ -7,7 +7,8 @@
     "backfill:hardening": "node scripts/backfill-enrollment-hardening.js --dry-run",
     "import:finance:gastos": "node scripts/import-gastos-sheet-to-finance.js",
     "export:finance:gastos": "node scripts/export-finance-to-gastos-sheet.js",
-    "backfill:finance:gastos": "node scripts/backfill-finance-gastos-sheet.js"
+    "backfill:finance:gastos": "node scripts/backfill-finance-gastos-sheet.js",
+    "sync:finance:gastos": "node scripts/sync-finance-gastos-safe.js"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.53.0",
