@@ -53,6 +53,24 @@ Aplicar:
 npm run export:finance:gastos -- --apply
 ```
 
+## Backfill de linhas ja existentes
+
+Quando os registros ja estao na aba `gastos`, mas algumas colunas ficaram vazias
+(ex.: cabecalho antigo), rode o backfill para atualizar essas linhas por
+`transaction_id` sem inserir novas.
+
+Dry-run do backfill:
+
+```bash
+npm run backfill:finance:gastos
+```
+
+Aplicar backfill:
+
+```bash
+npm run backfill:finance:gastos -- --apply
+```
+
 ## Operacao recomendada
 
 1. Rodar dry-run e validar `rowsToAppend`.
