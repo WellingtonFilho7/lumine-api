@@ -3,11 +3,13 @@
 const crypto = require('crypto');
 const { google } = require('googleapis');
 const { createClient } = require('@supabase/supabase-js');
+const { loadGoogleCredentials } = require('./lib/google-credentials');
 
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const SPREADSHEET_ID = process.env.SPREADSHEET_ID;
 const GOOGLE_CREDENTIALS_RAW = process.env.GOOGLE_CREDENTIALS || '';
+const GOOGLE_CREDENTIALS_FILE = process.env.GOOGLE_CREDENTIALS_FILE || '';
 const LEGACY_IMPORT_ACTOR_USER_ID = process.env.LEGACY_IMPORT_ACTOR_USER_ID || '';
 const LEGACY_GASTOS_SHEET_TITLE = process.env.LEGACY_GASTOS_SHEET_TITLE || 'gastos';
 const LEGACY_GASTOS_RANGE = process.env.LEGACY_GASTOS_RANGE || `${LEGACY_GASTOS_SHEET_TITLE}!A:ZZ`;
@@ -24,19 +26,21 @@ if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
   fail('Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY');
 }
 
-if (!SPREADSHEET_ID || !GOOGLE_CREDENTIALS_RAW) {
-  fail('Missing SPREADSHEET_ID or GOOGLE_CREDENTIALS');
+if (!SPREADSHEET_ID || (!GOOGLE_CREDENTIALS_RAW && !GOOGLE_CREDENTIALS_FILE)) {
+  fail('Missing SPREADSHEET_ID and GOOGLE credentials. Use GOOGLE_CREDENTIALS or GOOGLE_CREDENTIALS_FILE.');
 }
 
 if (!LEGACY_IMPORT_ACTOR_USER_ID) {
   fail('Missing LEGACY_IMPORT_ACTOR_USER_ID (UUID de auth.users/perfis_internos que sera dono da importacao)');
 }
 
-let GOOGLE_CREDENTIALS = {};
 try {
-  GOOGLE_CREDENTIALS = JSON.parse(GOOGLE_CREDENTIALS_RAW);
-} catch (_error) {
-  fail('GOOGLE_CREDENTIALS invalid JSON');
+  var GOOGLE_CREDENTIALS = loadGoogleCredentials({
+    raw: GOOGLE_CREDENTIALS_RAW,
+    file: GOOGLE_CREDENTIALS_FILE,
+  });
+} catch (error) {
+  fail(error.message);
 }
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {

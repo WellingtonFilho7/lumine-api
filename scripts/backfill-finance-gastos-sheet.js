@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 
-const fs = require('fs');
 const { google } = require('googleapis');
 const { createClient } = require('@supabase/supabase-js');
+const { loadGoogleCredentials } = require('./lib/google-credentials');
 const {
   normalizeHeader,
   normalizeText,
@@ -38,19 +38,13 @@ if (!SPREADSHEET_ID || (!GOOGLE_CREDENTIALS_RAW && !GOOGLE_CREDENTIALS_FILE)) {
   fail('Missing SPREADSHEET_ID and GOOGLE credentials. Use GOOGLE_CREDENTIALS or GOOGLE_CREDENTIALS_FILE.');
 }
 
-let GOOGLE_CREDENTIALS = {};
 try {
-  if (GOOGLE_CREDENTIALS_FILE) {
-    GOOGLE_CREDENTIALS = JSON.parse(fs.readFileSync(GOOGLE_CREDENTIALS_FILE, 'utf8'));
-  } else {
-    GOOGLE_CREDENTIALS = JSON.parse(GOOGLE_CREDENTIALS_RAW);
-  }
-} catch (_error) {
-  fail('Google credentials invalid JSON. Check GOOGLE_CREDENTIALS_FILE or GOOGLE_CREDENTIALS.');
-}
-
-if (!GOOGLE_CREDENTIALS.client_email || !GOOGLE_CREDENTIALS.private_key) {
-  fail('Google credentials must be Service Account JSON (missing client_email/private_key).');
+  var GOOGLE_CREDENTIALS = loadGoogleCredentials({
+    raw: GOOGLE_CREDENTIALS_RAW,
+    file: GOOGLE_CREDENTIALS_FILE,
+  });
+} catch (error) {
+  fail(error.message);
 }
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
