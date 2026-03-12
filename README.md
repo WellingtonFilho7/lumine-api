@@ -27,19 +27,17 @@ Trilhas ativas:
 ## Variaveis de ambiente
 
 ### Obrigatorias (todas as trilhas)
-- `API_TOKEN`
 - `ORIGINS_ALLOWLIST`
 - `SUPABASE_URL`
 - `SUPABASE_SERVICE_ROLE_KEY`
 
 ### Opcionais (Supabase)
-- `SUPABASE_ENFORCE_RBAC` (`true|false`) default: `false`
 - `RATE_LIMIT_WINDOW_MS` default: `60000`
 - `RATE_LIMIT_MAX` default: `30`
 - `RATE_LIMIT_NAMESPACE` default: `lumine:rate`
 - `RATE_LIMIT_USE_SUPABASE` (`true|false`) default: `true`
 - `RATE_LIMIT_CLEANUP_PROBABILITY` default: `0.02`
-- `DISABLE_SYNC_ENDPOINT` (`true|false`) default: `false`
+- `DISABLE_SYNC_ENDPOINT` (`true|false`) default: `true`
 - `ENROLLMENT_STRICT_MODE` (`true|false`) default: `false`
 - `ENROLLMENT_ACCEPT_LEGACY_FIELDS` (`true|false`) default: `true`
 
@@ -61,10 +59,11 @@ Trilhas ativas:
 ## Seguranca
 
 - Browser nunca grava diretamente no banco.
-- API valida token Bearer (`API_TOKEN`).
+- Leitura e escrita operacionais exigem JWT interno em `X-User-Jwt`.
+- JWT sem perfil interno ativo ou sem papel permitido recebe `401/403`.
 - Rotas intake possuem validacao server-side com Zod.
 - Rotas financeiras exigem usuario interno (`x-user-jwt`) com papel `admin` ou `secretaria`.
-- Fluxo financeiro nao aceita fallback de token compartilhado sem JWT interno.
+- Nao existe mais fallback operacional por token compartilhado do cliente.
 - `sync` possui validacao server-side e controle de concorrencia por `DATA_REV`.
 - Honeypot (`website`) no pre-cadastro.
 - Rate limit por IP: distribuido via Supabase (quando habilitado) com fallback em memoria.

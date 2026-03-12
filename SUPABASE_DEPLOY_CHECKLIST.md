@@ -25,14 +25,12 @@
 ## 2. Configurar Vercel (lumine-api)
 
 Obrigatorias:
-- `API_TOKEN`
 - `ORIGINS_ALLOWLIST`
 - `SUPABASE_URL`
 - `SUPABASE_SERVICE_ROLE_KEY`
 
 Recomendadas:
-- `SUPABASE_ENFORCE_RBAC=false` (iniciar)
-- `DISABLE_SYNC_ENDPOINT=false`
+- `DISABLE_SYNC_ENDPOINT=true`
 - `RATE_LIMIT_WINDOW_MS=60000`
 - `RATE_LIMIT_MAX=30`
 - `RATE_LIMIT_USE_SUPABASE=true`
@@ -59,7 +57,7 @@ Somente se usar espelho em Sheets (intake e/ou financeiro):
 2. Validar sync de leitura:
 
 ```bash
-curl -i "$API_URL/api/sync" -H "Authorization: Bearer $API_TOKEN"
+curl -i "$API_URL/api/sync" -H "X-User-Jwt: $INTERNAL_USER_JWT"
 ```
 
 3. Validar sync de escrita (`addChild`, `addRecord` e `sync`).
@@ -81,7 +79,6 @@ node --test lib/__tests__/finance-validation.test.js lib/__tests__/finance-servi
 
 ```bash
 curl -i "$API_URL/api/finance/upload-url" \
-  -H "Authorization: Bearer $API_TOKEN" \
   -H "X-User-Jwt: $INTERNAL_USER_JWT" \
   -H "Content-Type: application/json" \
   -d '{"fileName":"recibo.pdf","contentType":"application/pdf","fileSizeBytes":120000}'
@@ -89,7 +86,6 @@ curl -i "$API_URL/api/finance/upload-url" \
 
 ```bash
 curl -i "$API_URL/api/finance/create" \
-  -H "Authorization: Bearer $API_TOKEN" \
   -H "X-User-Jwt: $INTERNAL_USER_JWT" \
   -H "Content-Type: application/json" \
   -d '{"tipo":"gasto","descricao":"Compra de material","categoria":"operacional","valor":"149.90","data":"2026-03-04","formaPagamento":"pix","comprovantePath":"finance/2026/03/<user-id>/arquivo.pdf","idempotencyKey":"finance-001"}'
@@ -97,13 +93,11 @@ curl -i "$API_URL/api/finance/create" \
 
 ```bash
 curl -i "$API_URL/api/finance/list?limit=20" \
-  -H "Authorization: Bearer $API_TOKEN" \
   -H "X-User-Jwt: $INTERNAL_USER_JWT"
 ```
 
 ```bash
 curl -i "$API_URL/api/finance/file-url" \
-  -H "Authorization: Bearer $API_TOKEN" \
   -H "X-User-Jwt: $INTERNAL_USER_JWT" \
   -H "Content-Type: application/json" \
   -d '{"comprovantePath":"finance/2026/03/<user-id>/arquivo.pdf","expiresIn":120}'
