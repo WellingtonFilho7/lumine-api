@@ -104,10 +104,14 @@ npm run import:csv -- ./caminho/criancas.csv
 
 ## Testes locais
 
-```bash
-node --test lib/__tests__/*.test.js
-```
+Suite principal:
 
 ```bash
-node --test lib/__tests__/finance-validation.test.js lib/__tests__/finance-service.test.js
+npm test
+```
+
+Recorte util para o modulo financeiro:
+
+```bash
+node --test lib/__tests__/finance-validation.test.js lib/__tests__/finance-service.test.js lib/__tests__/finance-route-body.test.js
 ```
