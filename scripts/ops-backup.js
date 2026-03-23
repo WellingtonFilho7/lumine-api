@@ -1,9 +1,4 @@
 const {
-  buildOperationalBackupFilePath,
-  createOperationalBackupDocument,
-  writeOperationalBackupDocument,
-} = require('./lib/operational-backup');
-const {
   getDefaultOpsEnvPath,
   loadOpsEnvFile,
   resolveOpsBackupOptions,
@@ -55,6 +50,12 @@ async function main() {
     SUPABASE_URL: mergedEnv.SUPABASE_URL,
     SUPABASE_SERVICE_ROLE_KEY: mergedEnv.SUPABASE_SERVICE_ROLE_KEY,
   });
+
+  const {
+    buildOperationalBackupFilePath,
+    createOperationalBackupDocument,
+    writeOperationalBackupDocument,
+  } = require('./lib/operational-backup');
 
   const document = await createOperationalBackupDocument({ generatedAt: options.generatedAt });
 

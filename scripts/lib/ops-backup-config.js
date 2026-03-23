@@ -1,6 +1,17 @@
 const fs = require('node:fs');
 const path = require('node:path');
-const { buildOperationalBackupFilePath } = require('./operational-backup');
+
+function formatTimestampForFilename(isoTimestamp) {
+  return String(isoTimestamp)
+    .replace(/[-:]/g, '')
+    .replace('T', '_')
+    .replace(/\.\d{3}Z$/, '')
+    .replace(/Z$/, '');
+}
+
+function buildDefaultBackupFilePath({ generatedAt, outDir }) {
+  return path.join(outDir, `operational-backup-${formatTimestampForFilename(generatedAt)}.json`);
+}
 
 function stripWrappingQuotes(value) {
   if (
@@ -46,7 +57,7 @@ function resolveOpsBackupOptions({ cliArgs, env }) {
     cliArgs.out ||
     env.OPS_BACKUP_DEFAULT_OUT ||
     (env.OPS_BACKUP_DEFAULT_OUT_DIR
-      ? buildOperationalBackupFilePath({
+      ? buildDefaultBackupFilePath({
           generatedAt,
           outDir: env.OPS_BACKUP_DEFAULT_OUT_DIR,
         })
@@ -64,6 +75,8 @@ function getDefaultOpsEnvPath(cwd = process.cwd()) {
 }
 
 module.exports = {
+  buildDefaultBackupFilePath,
+  formatTimestampForFilename,
   getDefaultOpsEnvPath,
   loadOpsEnvFile,
   parseEnvAssignments,
