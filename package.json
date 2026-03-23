@@ -3,8 +3,10 @@
   "version": "1.1.0",
   "description": "API de sincronizacao e intake do Instituto Lumine",
   "scripts": {
-    "test": "node --test lib/__tests__/*.test.js",
+    "test": "node --test lib/__tests__/*.test.js scripts/lib/__tests__/*.test.js",
     "import:csv": "node scripts/import-csv-to-supabase.js",
+    "backup:operational": "node scripts/export-operational-backup.js",
+    "ops:backup": "node scripts/ops-backup.js",
     "backfill:hardening": "node scripts/backfill-enrollment-hardening.js --dry-run",
     "import:finance:gastos": "node scripts/import-gastos-sheet-to-finance.js",
     "export:finance:gastos": "node scripts/export-finance-to-gastos-sheet.js",

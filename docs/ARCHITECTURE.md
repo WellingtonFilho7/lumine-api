@@ -40,6 +40,7 @@ Integracoes opcionais:
 - `records/upsert.js`: gravacao idempotente de registros diarios
 - `finance/[action].js`: roteador serverless do modulo financeiro
 - `admin/internal-users/*.js`: aprovacao de usuarios internos
+- `admin/operational-backup/download.js`: download admin-only do snapshot operacional
 
 ### `lib/`
 
@@ -50,6 +51,7 @@ Integracoes opcionais:
 - `intake-validation.js` e `finance-validation.js`: schemas Zod
 - `intake-service.js`, `sync-supabase-service.js` e `finance-service.js`: logica de negocio
 - `mirror.js`: espelho opcional para Google Sheets
+- `operational-backup-service.js`: montagem do snapshot JSON de backup operacional
 
 ### `db/migrations/`
 
@@ -164,6 +166,19 @@ O overwrite completo fica atras de `DISABLE_SYNC_ENDPOINT=true` por padrao. O fl
 
 `POST /api/finance/file-url`
 - gera signed read URL para comprovante
+
+### Backup operacional
+
+`GET /api/admin/operational-backup/download`
+
+- exige `admin`
+- monta um snapshot atualizado de `children`, `records` e `dataRev`
+- responde com `application/json` e `Content-Disposition` para download
+
+Uso local complementar:
+
+- `npm run backup:operational` para export simples
+- `npm run ops:backup` para fluxo local com `.env.ops.local`
 
 ## Dados e consistencia
 

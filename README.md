@@ -24,6 +24,11 @@ Trilhas ativas:
 - `GET /api/finance/list`
 - `POST /api/finance/file-url`
 
+### Administrativo
+- `GET /api/admin/internal-users/pending`
+- `POST /api/admin/internal-users/approve`
+- `GET /api/admin/operational-backup/download`
+
 ## Variaveis de ambiente
 
 ### Obrigatorias (todas as trilhas)
@@ -110,8 +115,77 @@ Suite principal:
 npm test
 ```
 
+Esse comando cobre tanto `lib/__tests__` quanto `scripts/lib/__tests__`.
+
 Recorte util para o modulo financeiro:
 
 ```bash
 node --test lib/__tests__/finance-validation.test.js lib/__tests__/finance-service.test.js lib/__tests__/finance-route-body.test.js
+```
+
+
+## Backup operacional
+
+Requer `SUPABASE_URL` e `SUPABASE_SERVICE_ROLE_KEY` no ambiente.
+
+Para gerar um snapshot JSON dos dados operacionais atuais (`children`, `records` e `dataRev`):
+
+```bash
+npm run backup:operational
+```
+
+Saida padrao: `backups/operational/operational-backup-YYYYMMDD_HHMMSS.json`
+
+Para escrever em um caminho especifico:
+
+```bash
+npm run backup:operational -- --out /caminho/arquivo.json
+```
+
+Para imprimir o JSON no terminal:
+
+```bash
+npm run backup:operational -- --stdout
+```
+
+## Backup operacional sem friccao local
+
+Para evitar exportar variaveis manualmente toda vez:
+
+1. copie o arquivo de exemplo
+2. preencha as credenciais locais
+3. rode um unico comando
+
+```bash
+cp .env.ops.example .env.ops.local
+```
+
+Campos esperados em `.env.ops.local`:
+
+- `SUPABASE_URL`
+- `SUPABASE_SERVICE_ROLE_KEY`
+- `OPS_BACKUP_DEFAULT_OUT_DIR` ou `OPS_BACKUP_DEFAULT_OUT`
+
+Depois:
+
+```bash
+npm run ops:backup
+```
+
+Esse comando:
+
+- carrega `.env.ops.local`
+- gera o snapshot operacional atual
+- salva no destino padrao configurado
+
+Voce ainda pode sobrescrever a saida:
+
+```bash
+npm run ops:backup -- --out /caminho/arquivo.json
+```
+
+Ou imprimir no terminal:
+
+```bash
+npm run ops:backup -- --stdout
 ```

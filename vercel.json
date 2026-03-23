@@ -16,6 +16,10 @@
       "dest": "/api/admin/internal-users/pending.js"
     },
     {
+      "src": "/api/admin/operational-backup/download",
+      "dest": "/api/admin/operational-backup/download.js"
+    },
+    {
       "src": "/api/admin/internal-users/approve",
       "dest": "/api/admin/internal-users/approve.js"
     },
