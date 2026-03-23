@@ -1,15 +1,15 @@
-const { resolveActor } = require('../../lib/actor');
-const { sendHandledError } = require('../../lib/http-errors');
-const { createOperationalBackupDocument } = require('../../lib/operational-backup-service');
-const { ensureCors, ensureRateLimit, setCors } = require('../../lib/security');
+const { resolveActor } = require('../lib/actor');
+const { sendHandledError } = require('../lib/http-errors');
+const { createOperationalBackupDocument } = require('../lib/operational-backup-service');
+const { ensureCors, ensureRateLimit, setCors } = require('../lib/security');
 const {
   approveInternalUserSchema,
   parseAdminPayloadOrThrow,
-} = require('../../lib/internal-users-validation');
+} = require('../lib/internal-users-validation');
 const {
   approveInternalUserByEmail,
   listPendingInternalUsers,
-} = require('../../lib/internal-users-service');
+} = require('../lib/internal-users-service');
 
 function safeParseJsonString(value) {
   if (typeof value !== 'string') return null;
