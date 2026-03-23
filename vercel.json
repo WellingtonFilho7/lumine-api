@@ -13,15 +13,15 @@
     },
     {
       "src": "/api/admin/internal-users/pending",
-      "dest": "/api/admin/internal-users/pending.js"
+      "dest": "/api/admin/[action].js?action=internal-users/pending"
     },
     {
       "src": "/api/admin/operational-backup/download",
-      "dest": "/api/admin/operational-backup/download.js"
+      "dest": "/api/admin/[action].js?action=operational-backup/download"
     },
     {
       "src": "/api/admin/internal-users/approve",
-      "dest": "/api/admin/internal-users/approve.js"
+      "dest": "/api/admin/[action].js?action=internal-users/approve"
     },
     {
       "src": "/api/children/create",
