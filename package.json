@@ -12,12 +12,14 @@
     "export:finance:gastos": "node scripts/export-finance-to-gastos-sheet.js",
     "backfill:finance:gastos": "node scripts/backfill-finance-gastos-sheet.js",
     "prune:finance:gastos": "node scripts/prune-finance-gastos-sheet.js",
-    "sync:finance:gastos": "node scripts/sync-finance-gastos-safe.js"
+    "sync:finance:gastos": "node scripts/sync-finance-gastos-safe.js",
+    "generate:consent-pdfs": "node scripts/generate-consent-pdfs.js"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.53.0",
     "csv-parse": "^5.5.6",
     "googleapis": "^128.0.0",
+    "pdfkit": "^0.18.0",
     "zod": "^3.23.8"
   }
 }
