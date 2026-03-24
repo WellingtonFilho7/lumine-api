@@ -1,0 +1,28 @@
+name: Gerar Termos de Consentimento (PDF)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  generate-pdfs:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repositório
+        uses: actions/checkout@v4
+
+      - name: Instalar dependências
+        run: npm ci
+
+      - name: Gerar PDFs
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: npm run generate:consent-pdfs
+
+      - name: Upload dos PDFs como artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: termos-consentimento
+          path: output/termos-consentimento/
+          retention-days: 7
